@@ -114,10 +114,12 @@ export default function Home() {
     <div className="min-h-screen bg-gray-100 flex">
       {/* Left Side Menu */}
       <aside className="w-64 bg-purple-800 text-white p-4">
-        <div className="flex items-center mb-8">
-          <BookOpen className="w-8 h-8 mr-2" />
-          <h1 className="text-2xl font-bold">EduSage</h1>
-        </div>
+      <div className="flex items-center mb-8">
+        <img src="/ES_logo.png" alt="Your Logo" className="w-20  h-20 mr-1" />
+        <h1 className="text-2xl font-bold">EduSage</h1>
+      </div>
+
+
         <nav>
           <ul className="space-y-2">
             <li>

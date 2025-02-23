@@ -23,7 +23,6 @@ const UserSchema = new mongoose.Schema({
   rollno: { type: String, unique: true, required: true },
   password: { type: String, required: true },
 });
-
 const User = mongoose.model("User", UserSchema);
 
 /** ========== RESOURCE SCHEMA (FIXED) ========== **/
@@ -33,8 +32,16 @@ const ResourceSchema = new mongoose.Schema({
   fileLink: { type: String, required: true },
   bookmarked: { type: Boolean, default: false },  // ✅ FIXED: Added the `bookmarked` field
 });
-
 const Resource = mongoose.model("Resource", ResourceSchema);
+
+/** ========== EVENT SCHEMA ========== **/
+const EventSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  date: { type: Date, required: true },
+  time: { type: String, default: "" },
+  details: { type: String, default: "" },
+});
+const Event = mongoose.model("Event", EventSchema);
 
 /** ========== REGISTER USER API ========== **/
 app.post("/register", async (req, res) => {
@@ -169,6 +176,58 @@ app.get("/api/resources/bookmarked", async (req, res) => {
   }
 });
 
-/** ========== START SERVER ========== **/
+/** ========== GET ALL EVENTS API ========== **/
+app.get("/api/events", async (req, res) => {
+  try {
+    const events = await Event.find();
+    res.json(events);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+/** ========== ADD NEW EVENT API ========== **/
+app.post("/api/events", async (req, res) => {
+  try {
+    const { title, date, time, details } = req.body;
+    if (!title || !date) {
+      return res.status(400).json({ message: "Title and Date are required" });
+    }
+    const newEvent = new Event({ title, date, time, details });
+    await newEvent.save();
+    res.status(201).json(newEvent);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Update Event
+app.put("/api/events/:id", async (req, res) => {
+  try {
+    const { title, date, time, details } = req.body;
+    const updatedEvent = await Event.findByIdAndUpdate(
+      req.params.id,
+      { title, date, time, details },
+      { new: true }
+    );
+    if (!updatedEvent) return res.status(404).json({ message: "Event not found" });
+    res.json(updatedEvent);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Delete Event
+app.delete("/api/events/:id", async (req, res) => {
+  try {
+    const deletedEvent = await Event.findByIdAndDelete(req.params.id);
+    if (!deletedEvent) return res.status(404).json({ message: "Event not found" });
+    res.json({ message: "Event deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+/* START SERVER */
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
