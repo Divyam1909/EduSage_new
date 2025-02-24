@@ -37,19 +37,36 @@ import {
 
 export default function Home() {
   const [isAskModalOpen, setIsAskModalOpen] = useState(false);
-  // const [message, setMessage] = useState("");
+  const [userData, setUserData] = useState<any>(null);
 
+  // Fetch some sample data from Django API (unchanged)
   useEffect(() => {
-    // Fetch data from Django API
     axios
       .get("http://localhost:8000/api/data/")
       .then((response) => {
-        // setMessage(response.data.message);
         console.log(response.data.message);
       })
       .catch((error) => {
         console.error("There was an error!", error);
       });
+  }, []);
+
+  // NEW: Fetch logged-in user profile from your backend
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      fetch("http://localhost:5000/profile", {
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + token,
+        },
+      })
+        .then((response) => response.json())
+        .then((data) => setUserData(data))
+        .catch((error) =>
+          console.error("Error fetching profile from backend:", error)
+        );
+    }
   }, []);
 
   const questions = [
@@ -88,8 +105,9 @@ export default function Home() {
     { name: "Divyam", points: 875 },
   ];
 
+  // Default profile details for the right column (kept unchanged except for the name)
   const userProfile = {
-    name: "Arjun Varshney",
+    name: userData && userData.name ? userData.name : "Arjun Varshney",
     level: 5,
     experience: 75,
     wisdomPoints: 450,
@@ -110,16 +128,21 @@ export default function Home() {
     }).format(date);
   };
 
+  // Utility to compute initials from a name string
+  const getInitials = (name: string) =>
+    name
+      .split(" ")
+      .map((word) => word[0])
+      .join("");
+
   return (
     <div className="min-h-screen bg-gray-100 flex">
       {/* Left Side Menu */}
       <aside className="w-64 bg-purple-800 text-white p-4">
-      <div className="flex items-center mb-8">
-        <img src="/ES_logo.png" alt="Your Logo" className="w-20  h-20 mr-1" />
-        <h1 className="text-2xl font-bold">EduSage</h1>
-      </div>
-
-
+        <div className="flex items-center mb-8">
+         <img src="/ES_logo.png" alt="Your Logo" className="w-20 h-20 mr-2" />
+          <h1 className="text-2xl font-bold">EduSage</h1>
+        </div>
         <nav>
           <ul className="space-y-2">
             <li>
@@ -228,11 +251,15 @@ export default function Home() {
             </div>
             <div className="flex items-center space-x-4">
               <Bell className="w-6 h-6" />
-              {/* Wrap the Avatar in a Link to make it function as a profile button */}
+              {/* Updated: Avatar now shows logged-in user's initials */}
               <Link to="/profile">
                 <Avatar>
                   <AvatarImage src="/placeholder-user.jpg" alt="User" />
-                  <AvatarFallback className="text-black">AV</AvatarFallback>
+                  <AvatarFallback className="text-black">
+                    {userData && userData.name
+                      ? getInitials(userData.name)
+                      : "AV"}
+                  </AvatarFallback>
                 </Avatar>
               </Link>
             </div>
@@ -267,7 +294,9 @@ export default function Home() {
                     </span>
                     <span
                       className={`text-sm font-semibold flex items-center ${
-                        question.solved ? "text-green-500" : "text-red-500"
+                        question.solved
+                          ? "text-green-500"
+                          : "text-red-500"
                       }`}
                     >
                       {question.solved ? (
@@ -308,10 +337,16 @@ export default function Home() {
                       src="/placeholder-user.jpg"
                       alt={userProfile.name}
                     />
-                    <AvatarFallback>AV</AvatarFallback>
+                    <AvatarFallback>
+                      {userData && userData.name
+                        ? getInitials(userData.name)
+                        : "AV"}
+                    </AvatarFallback>
                   </Avatar>
                   <div>
-                    <h2 className="text-2xl font-bold">{userProfile.name}</h2>
+                    <h2 className="text-2xl font-bold">
+                      {userData && userData.name ? userData.name : "User"}
+                    </h2>
                     <p className="text-purple-600">
                       Level {userProfile.level} Sage
                     </p>
@@ -337,7 +372,9 @@ export default function Home() {
                     <p className="font-semibold">
                       {userProfile.questionsAnswered}
                     </p>
-                    <p className="text-sm text-gray-500">Questions Answered</p>
+                    <p className="text-sm text-gray-500">
+                      Questions Answered
+                    </p>
                   </div>
                   <div>
                     <p className="font-semibold">{userProfile.rank}</p>

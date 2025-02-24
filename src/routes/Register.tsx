@@ -16,13 +16,32 @@ import { Link } from "react-router-dom";
 
 export default function Register() {
   const navigate = useNavigate();
+  
+  // New state variables for additional fields
+  const [name, setName] = useState("");
   const [rollno, setRollno] = useState("");
+  const [branch, setBranch] = useState("");
+  const [sem, setSem] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [retypePassword, setRetypePassword] = useState("");
   const [error, setError] = useState("");
 
   const handleRegister = async () => {
-    if (rollno === "" || password === "" || retypePassword === "") {
+    // Check if any field is empty
+    if (
+      !name ||
+      !rollno ||
+      !branch ||
+      !sem ||
+      !dateOfBirth ||
+      !phone ||
+      !email ||
+      !password ||
+      !retypePassword
+    ) {
       setError("Please fill all fields.");
       return;
     }
@@ -36,7 +55,16 @@ export default function Register() {
       const response = await fetch("http://localhost:5000/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rollno, password }),
+        body: JSON.stringify({
+          name,
+          rollno,
+          branch,
+          sem: Number(sem),
+          dateOfBirth,
+          phone,
+          email,
+          password,
+        }),
       });
 
       const data = await response.json();
@@ -74,6 +102,20 @@ export default function Register() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Name */}
+            <div className="space-y-2">
+              <Label htmlFor="name">Name</Label>
+              <Input
+                id="name"
+                type="text"
+                placeholder="Your full name"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={handleKeyPress}
+              />
+            </div>
+            {/* Roll Number */}
             <div className="space-y-2">
               <Label htmlFor="rollno">Roll Number</Label>
               <Input
@@ -86,6 +128,71 @@ export default function Register() {
                 onKeyDown={handleKeyPress}
               />
             </div>
+            {/* Branch */}
+            <div className="space-y-2">
+              <Label htmlFor="branch">Branch</Label>
+              <Input
+                id="branch"
+                type="text"
+                placeholder="Your branch"
+                required
+                value={branch}
+                onChange={(e) => setBranch(e.target.value)}
+                onKeyDown={handleKeyPress}
+              />
+            </div>
+            {/* Semester */}
+            <div className="space-y-2">
+              <Label htmlFor="sem">Semester</Label>
+              <Input
+                id="sem"
+                type="number"
+                placeholder="Semester"
+                required
+                value={sem}
+                onChange={(e) => setSem(e.target.value)}
+                onKeyDown={handleKeyPress}
+              />
+            </div>
+            {/* Date of Birth */}
+            <div className="space-y-2">
+              <Label htmlFor="dob">Date of Birth</Label>
+              <Input
+                id="dob"
+                type="date"
+                required
+                value={dateOfBirth}
+                onChange={(e) => setDateOfBirth(e.target.value)}
+                onKeyDown={handleKeyPress}
+              />
+            </div>
+            {/* Phone Number */}
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone Number</Label>
+              <Input
+                id="phone"
+                type="text"
+                placeholder="Your phone number"
+                required
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                onKeyDown={handleKeyPress}
+              />
+            </div>
+            {/* Email */}
+            <div className="space-y-2">
+              <Label htmlFor="email">Email ID</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="Your email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={handleKeyPress}
+              />
+            </div>
+            {/* Password */}
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <Input
@@ -97,6 +204,7 @@ export default function Register() {
                 onKeyDown={handleKeyPress}
               />
             </div>
+            {/* Retype Password */}
             <div className="space-y-2">
               <Label htmlFor="retypePassword">Retype Password</Label>
               <Input

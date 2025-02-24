@@ -139,7 +139,7 @@
         {/* Left Side Menu */}
         <aside className="w-64 bg-purple-800 text-white p-4">
           <div className="flex items-center mb-8">
-            <BookOpen className="w-8 h-8 mr-2" />
+          <img src="/ES_logo.png" alt="Your Logo" className="w-20 h-20 mr-2" />
             <h1 className="text-2xl font-bold">EduSage</h1>
           </div>
           <nav>
@@ -227,21 +227,21 @@
 
         {/* Main Content */}
         <div className="flex-1 flex flex-col">
-          <header className="bg-purple-800 text-white p-4">
-            <div className="container mx-auto flex justify-between items-center">
-              <div className="flex items-center space-x-4">
-                <GraduationCap className="w-8 h-8 mr-2" />
-                <h1 className="text-3xl font-bold">EduSage</h1>
+            {/* <header className="bg-purple-800 text-white p-4">
+              <div className="container mx-auto flex justify-between items-center">
+                <div className="flex items-center space-x-4">
+                  <GraduationCap className="w-8 h-8 mr-2" />
+                  <h1 className="text-3xl font-bold">EduSage</h1>
+                </div>
+                <Button
+                  variant="ghost"
+                  className="text-white md:hidden"
+                  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                >
+                  <Menu className="h-6 w-6" />
+                </Button>
               </div>
-              <Button
-                variant="ghost"
-                className="text-white md:hidden"
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              >
-                <Menu className="h-6 w-6" />
-              </Button>
-            </div>
-          </header>
+            </header> */}
 
           {/* Delete Confirmation Modal */}
           {showDeleteModal && resourceToDelete && (

@@ -102,7 +102,7 @@ export default function QuizInterface() {
       {/* Left Side Menu */}
       <aside className="w-64 bg-purple-800 text-white p-4">
         <div className="flex items-center mb-8">
-          <BookOpen className="w-8 h-8 mr-2" />
+        <img src="/ES_logo.png" alt="Your Logo" className="w-20 h-20 mr-2" />
           <h1 className="text-2xl font-bold">EduSage</h1>
         </div>
         <nav>
@@ -172,7 +172,7 @@ export default function QuizInterface() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
-        <header className="bg-purple-700 shadow-sm">
+        {/* <header className="bg-purple-700 shadow-sm">
           <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex items-center justify-between">
             <div className="flex items-center">
               <GraduationCap className="h-10 w-10 text-purple-200" />
@@ -182,7 +182,7 @@ export default function QuizInterface() {
               <Menu className="h-6 w-6" />
             </Button>
           </div>
-        </header>
+        </header> */}
 
         {mobileMenuOpen && (
           <nav className="bg-purple-700 text-white p-4 md:hidden">

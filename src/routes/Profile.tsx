@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -31,6 +31,22 @@ export default function ProfilePage() {
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [showDetailedAnalysis, setShowDetailedAnalysis] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
+  const [userData, setUserData] = useState<any>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      fetch("http://localhost:5000/profile", {
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + token,
+        },
+      })
+        .then((response) => response.json())
+        .then((data) => setUserData(data))
+        .catch((error) => console.error("Error fetching profile:", error));
+    }
+  }, []);
 
   const handleViewAnalysisClick = () => {
     setShowDetailedAnalysis(true);
@@ -103,7 +119,7 @@ export default function ProfilePage() {
       {/* Left Side Menu */}
       <aside className="w-64 bg-purple-800 text-white p-4">
         <div className="flex items-center mb-8">
-          <BookOpen className="w-8 h-8 mr-2" />
+        <img src="/ES_logo.png" alt="Your Logo" className="w-20 h-20 mr-2" />
           <h1 className="text-2xl font-bold">EduSage</h1>
         </div>
         <nav>
@@ -192,12 +208,12 @@ export default function ProfilePage() {
       {/* Main Content */}
       <div className="flex-1">
         {/* Header */}
-        <header className="bg-purple-800 text-white p-4">
+        {/* <header className="bg-purple-800 text-white p-4">
           <div className="container mx-auto flex items-center">
             <BookOpen className="w-8 h-8 mr-2" />
             <h1 className="text-2xl font-bold">EduSage</h1>
           </div>
-        </header>
+        </header> */}
 
         {/* Main content */}
         <main className="container mx-auto mt-8 p-4">
@@ -209,7 +225,9 @@ export default function ProfilePage() {
                 className="w-48 h-48 rounded-full object-cover mb-4 md:mb-0 md:mr-6"
               />
               <div className="text-center md:text-left">
-                <h2 className="text-2xl font-bold mb-2">Divyam Navin</h2>
+                <h2 className="text-2xl font-bold mb-2">
+                  {userData ? userData.name : "Loading..."}
+                </h2>
                 <Button
                   onClick={() => setIsStatsOpen(true)}
                   className="bg-purple-600 hover:bg-purple-700 text-white"
@@ -222,19 +240,35 @@ export default function ProfilePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <p className="font-semibold">Roll No.:</p>
-                <p>5023134</p>
+                <p>{userData ? userData.rollno : "Loading..."}</p>
               </div>
               <div>
-                <p className="font-semibold">College Email:</p>
-                <p>5023134@it.fcrit.ac.in</p>
+                <p className="font-semibold">Name:</p>
+                <p>{userData ? userData.name : "Loading..."}</p>
               </div>
               <div>
-                <p className="font-semibold">Phone Number (Optional):</p>
-                <p>7738127675</p>
+                <p className="font-semibold">Branch:</p>
+                <p>{userData ? userData.branch : "Loading..."}</p>
+              </div>
+              <div>
+                <p className="font-semibold">Semester:</p>
+                <p>{userData ? userData.sem : "Loading..."}</p>
+              </div>
+              <div>
+                <p className="font-semibold">Email:</p>
+                <p>{userData ? userData.email : "Loading..."}</p>
+              </div>
+              <div>
+                <p className="font-semibold">Phone Number:</p>
+                <p>{userData ? userData.phone : "Loading..."}</p>
               </div>
               <div>
                 <p className="font-semibold">Date of Birth:</p>
-                <p>September 19, 2005</p>
+                <p>
+                  {userData
+                    ? new Date(userData.dateOfBirth).toLocaleDateString()
+                    : "Loading..."}
+                </p>
               </div>
             </div>
           </div>

@@ -4,7 +4,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { 
   BookOpen, Home, Menu, MessageSquare, PenTool, Play, HelpCircle, 
   BookOpenCheck, Users, FileText, PuzzleIcon as Quiz, User, Bookmark, Calendar, 
-  GraduationCap
+  GraduationCap,
+  Bot
 } from 'lucide-react'
 import { Link } from "react-router-dom"
 
@@ -25,14 +26,17 @@ export default function Component() {
       {/* Left Side Menu */}
       <aside className="w-64 bg-purple-800 text-white p-4">
         <div className="flex items-center mb-8">
-          <BookOpen className="w-8 h-8 mr-2" />
+          <img src="/ES_logo.png" alt="Your Logo" className="w-20 h-20 mr-2" />
           <h1 className="text-2xl font-bold">EduSage</h1>
         </div>
         <nav>
           <ul className="space-y-2">
             <li>
               <Link to="/home">
-                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
                   <Users className="mr-2 h-4 w-4" />
                   Discussion Forum
                 </Button>
@@ -40,7 +44,10 @@ export default function Component() {
             </li>
             <li>
               <Link to="/Resources">
-                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
                   <FileText className="mr-2 h-4 w-4" />
                   Resources
                 </Button>
@@ -48,15 +55,21 @@ export default function Component() {
             </li>
             <li>
               <Link to="/quiz">
-                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
-                  <Quiz className="mr-2 h-4 w-4" />
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
+                  <HelpCircle className="mr-2 h-4 w-4" />
                   Quizzes
                 </Button>
               </Link>
             </li>
             <li>
               <Link to="/profile">
-                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
                   <User className="mr-2 h-4 w-4" />
                   Profile
                 </Button>
@@ -64,7 +77,10 @@ export default function Component() {
             </li>
             <li>
               <Link to="/bookmark">
-                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
                   <Bookmark className="mr-2 h-4 w-4" />
                   Bookmarks
                 </Button>
@@ -72,9 +88,23 @@ export default function Component() {
             </li>
             <li>
               <Link to="/calendar">
-                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
                   <Calendar className="mr-2 h-4 w-4" />
                   Calendar
+                </Button>
+              </Link>
+            </li>
+            <li>
+              <Link to="/ai">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
+                  <Bot className="mr-2 h-4 w-4" />
+                  AI Assistant
                 </Button>
               </Link>
             </li>
@@ -83,13 +113,17 @@ export default function Component() {
       </aside>
 
       {/* Main Content */}
+     
       <div className="flex-1 flex flex-col">
-        <header className="flex justify-between items-center p-4 bg-purple-800 text-white">
+   <h1 className="text-4xl font-bold text-purple-800 mb-6 text-center">
+              AI Assistant
+            </h1>
+        {/* <header className="flex justify-between items-center p-4 bg-purple-800 text-white">
         <div className="flex items-center space-x-4">
                 <GraduationCap className="w-8 h-8 mr-2" />
                 <h1 className="text-3xl font-bold">EduSage</h1>
               </div>
-        </header>
+        </header> */}
 
         {/* Main content cards, topics, etc. */}
         <div className="flex-1 p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
