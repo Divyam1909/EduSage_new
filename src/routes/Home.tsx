@@ -3,7 +3,7 @@ import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Dialog,
   DialogContent,
@@ -35,27 +35,10 @@ import {
 } from "lucide-react";
 
 export default function Home() {
-  const [isAskModalOpen, setIsAskModalOpen] = useState(false);
   const [userData, setUserData] = useState<any>(null);
   const [questions, setQuestions] = useState<any[]>([]);
-
-  // States for the Ask Question form
-  const [askSubject, setAskSubject] = useState("");
-  const [askTitle, setAskTitle] = useState("");
-  const [askDetails, setAskDetails] = useState("");
-  const [askWisdomPoints, setAskWisdomPoints] = useState(0);
-
-  // Sample data fetch (this call can be removed if not needed)
-  useEffect(() => {
-    axios
-      .get("http://localhost:8000/api/data/")
-      .then((response) => {
-        console.log(response.data.message);
-      })
-      .catch((error) => {
-        console.error("There was an error!", error);
-      });
-  }, []);
+  const [searchQuery, setSearchQuery] = useState("");
+  const navigate = useNavigate();
 
   // Fetch logged-in user profile from your backend
   useEffect(() => {
@@ -89,6 +72,11 @@ export default function Home() {
     fetchQuestions();
   }, []);
 
+  // Filter questions based on search query
+  const filteredQuestions = questions.filter((q) =>
+    q.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   // Default profile details for the right column
   const userProfile = {
     name: userData && userData.name ? userData.name : "Arjun Varshney",
@@ -118,31 +106,6 @@ export default function Home() {
       .split(" ")
       .map((word) => word[0])
       .join("");
-
-  // Handle Ask Question form submission
-  const handleAskSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    try {
-      const res = await axios.post("http://localhost:5000/api/questions", {
-        title: askTitle,
-        details: askDetails,
-        subject: askSubject,
-        wisdomPoints: askWisdomPoints,
-      });
-      if (res.status === 201) {
-        alert("Question submitted successfully");
-        fetchQuestions();
-        setAskSubject("");
-        setAskTitle("");
-        setAskDetails("");
-        setAskWisdomPoints(0);
-        setIsAskModalOpen(false);
-      }
-    } catch (error) {
-      console.error("Error submitting question", error);
-      alert("Error submitting question");
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gray-100 flex">
@@ -239,20 +202,19 @@ export default function Home() {
           <div className="max-w-6xl mx-auto flex justify-between items-center">
             <div className="flex items-center space-x-4">
               <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-64 cursor-pointer bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80"
                 placeholder="Search questions..."
               />
-              <Link to="/performance">
-                <Button variant="secondary">
-                  <Search className="w-4 h-4 mr-2" />
-                  Search
-                </Button>
-              </Link>
+              {/* Instead of linking to a separate search page, filtering is done here */}
+              <Button variant="secondary">
+                <Search className="w-4 h-4 mr-2" />
+                Search
+              </Button>
+              {/* Updated: Navigate to EnhancedAskQuestion page */}
               <Link to="/ask">
-                <Button
-                  variant="secondary"
-                  onClick={() => setIsAskModalOpen(true)}
-                >
+                <Button variant="secondary">
                   <HelpCircle className="w-4 h-4 mr-2" />
                   Seek Wisdom
                 </Button>
@@ -278,50 +240,48 @@ export default function Home() {
           <div className="w-1/2 flex flex-col">
             <h2 className="text-2xl font-bold mb-4">Recent Questions</h2>
             <div className="flex-2 overflow-y-auto mb-4">
-              {questions.map((question) => (
-                <div
-                  key={question._id}
-                  className="bg-white rounded-lg shadow-md p-4 mb-4"
-                >
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm font-semibold text-purple-600">
-                      {question.subject}
-                    </span>
-                    <span className="text-sm text-gray-500">
-                      {question.wisdomPoints} wisdom points
-                    </span>
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2">
-                    {question.title}
-                  </h3>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm text-gray-500">
-                      Asked on: {formatDate(new Date(question.askedAt))}
-                    </span>
-                    <span
-                      className={`text-sm font-semibold flex items-center ${
-                        question.solved
-                          ? "text-green-500"
-                          : "text-red-500"
-                      }`}
-                    >
-                      {question.solved ? (
-                        <CheckCircle className="w-4 h-4 mr-1" />
-                      ) : (
-                        <XCircle className="w-4 h-4 mr-1" />
-                      )}
-                      {question.solved ? "Solved" : "Unsolved"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <Button variant="outline">
-                      View Answers ({question.answers || 0})
-                    </Button>
-                    <Link to="/solutions">
+              {filteredQuestions.map((question) => (
+                // Wrap the entire card in a Link to the detailed Solutions page for that question
+                <Link key={question._id} to={`/solutions/${question._id}`}>
+                  <div className="bg-white rounded-lg shadow-md p-4 mb-4 cursor-pointer hover:shadow-xl transition-shadow">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-semibold text-purple-600">
+                        {question.subject}
+                      </span>
+                      <span className="text-sm text-gray-500">
+                        {question.wisdomPoints} wisdom points
+                      </span>
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">
+                      {question.title}
+                    </h3>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm text-gray-500">
+                        Asked on: {formatDate(new Date(question.askedAt))}
+                      </span>
+                      <span
+                        className={`text-sm font-semibold flex items-center ${
+                          question.solved
+                            ? "text-green-500"
+                            : "text-red-500"
+                        }`}
+                      >
+                        {question.solved ? (
+                          <CheckCircle className="w-4 h-4 mr-1" />
+                        ) : (
+                          <XCircle className="w-4 h-4 mr-1" />
+                        )}
+                        {question.solved ? "Solved" : "Unsolved"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <Button variant="outline">
+                        View Answers ({question.answers || 0})
+                      </Button>
                       <Button>Share Wisdom</Button>
-                    </Link>
+                    </div>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
             <Button
@@ -334,7 +294,6 @@ export default function Home() {
 
           {/* Right Column: Profile and Top Sages */}
           <div className="w-1/2 space-y-8 flex flex-col">
-            <Link to="/profile">
               <div className="bg-white rounded-lg shadow-md p-6">
                 <div className="flex items-center mb-4">
                   <Avatar className="w-16 h-16 mr-4">
@@ -408,7 +367,6 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-            </Link>
 
             {/* Top Sages */}
             <div className="bg-white rounded-lg shadow-md p-6">
@@ -437,49 +395,6 @@ export default function Home() {
           </div>
         </main>
       </div>
-
-      {/* Ask Question Modal */}
-      <Dialog open={isAskModalOpen} onOpenChange={setIsAskModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Seek Wisdom</DialogTitle>
-          </DialogHeader>
-          <form className="space-y-4" onSubmit={handleAskSubmit}>
-            <Select onValueChange={(value) => setAskSubject(value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select subject" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="math">Math</SelectItem>
-                <SelectItem value="science">Science</SelectItem>
-                <SelectItem value="history">History</SelectItem>
-                <SelectItem value="literature">Literature</SelectItem>
-              </SelectContent>
-            </Select>
-            <Input
-              placeholder="Enter your question"
-              value={askTitle}
-              onChange={(e) => setAskTitle(e.target.value)}
-            />
-            <Textarea
-              placeholder="Provide more details about your inquiry"
-              value={askDetails}
-              onChange={(e) => setAskDetails(e.target.value)}
-            />
-            <Input
-              type="number"
-              placeholder="Wisdom points to offer (1-20)"
-              min="1"
-              max="20"
-              value={askWisdomPoints}
-              onChange={(e) => setAskWisdomPoints(Number(e.target.value))}
-            />
-            <Button type="submit" className="w-full">
-              Submit Inquiry
-            </Button>
-          </form>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

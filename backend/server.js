@@ -49,6 +49,20 @@ const Event = require("./models/Event.js");
 /** ========== QUESTION MODEL ========== **/
 const Question = require("./models/question.js");
 
+/** ========== NEW ANSWER SCHEMA ========== **/
+const AnswerSchema = new mongoose.Schema({
+  questionId: { type: mongoose.Schema.Types.ObjectId, ref: "Question", required: true },
+  user: { type: String, required: true },
+  content: { type: String, required: true },
+  answeredAt: { type: Date, default: Date.now },
+  attachments: { type: Array, default: [] },
+  likes: { type: Number, default: 0 },
+  comments: { type: Number, default: 0 },
+  points: { type: Number, default: 0 },
+});
+
+const Answer = mongoose.model("Answer", AnswerSchema);
+
 /** ========== REGISTER USER API ========== **/
 app.post("/register", async (req, res) => {
   try {
@@ -284,6 +298,19 @@ app.get("/api/questions", async (req, res) => {
   }
 });
 
+// Get a Single Question by ID
+app.get("/api/questions/:id", async (req, res) => {
+  try {
+    const question = await Question.findById(req.params.id);
+    if (!question) {
+      return res.status(404).json({ message: "Question not found" });
+    }
+    res.json(question);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 // New Endpoint: Share Wisdom (Add wisdom points to a question)
 app.put("/api/questions/:id/wisdom", async (req, res) => {
   try {
@@ -298,6 +325,78 @@ app.put("/api/questions/:id/wisdom", async (req, res) => {
     res.json(question);
   } catch (error) {
     console.error("Error sharing wisdom", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Endpoint: Get Answers for a Question
+app.get("/api/questions/:id/answers", async (req, res) => {
+  try {
+    const answers = await Answer.find({ questionId: req.params.id }).sort({ answeredAt: -1 });
+    res.json(answers);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Endpoint: Submit a New Answer for a Question
+app.post("/api/questions/:id/answers", async (req, res) => {
+  try {
+    const { user, content, attachments } = req.body;
+    if (!user || !content) {
+      return res.status(400).json({ message: "User and content are required" });
+    }
+    const newAnswer = new Answer({
+      questionId: req.params.id,
+      user,
+      content,
+      attachments,
+    });
+    await newAnswer.save();
+    // Update the answer count in the question
+    await Question.findByIdAndUpdate(req.params.id, { $inc: { answers: 1 } });
+    res.status(201).json(newAnswer);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Endpoint: Update an Answer (only by the owner)
+app.put("/api/answers/:id", async (req, res) => {
+  try {
+    const { content, attachments } = req.body;
+    const answer = await Answer.findById(req.params.id);
+    if (!answer) {
+      return res.status(404).json({ message: "Answer not found" });
+    }
+    // For simplicity, we check if the answer belongs to "You"
+    if (answer.user !== "You") {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+    answer.content = content;
+    answer.attachments = attachments;
+    await answer.save();
+    res.json(answer);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Endpoint: Delete an Answer (only by the owner)
+app.delete("/api/answers/:id", async (req, res) => {
+  try {
+    const answer = await Answer.findById(req.params.id);
+    if (!answer) {
+      return res.status(404).json({ message: "Answer not found" });
+    }
+    if (answer.user !== "You") {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+    await answer.deleteOne();
+    // Decrement the answer count in the corresponding question
+    await Question.findByIdAndUpdate(answer.questionId, { $inc: { answers: -1 } });
+    res.json({ message: "Answer deleted successfully" });
+  } catch (error) {
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -322,8 +421,6 @@ function authenticateToken(req, res, next) {
 app.get("/profile", authenticateToken, async (req, res) => {
   try {
     const { rollno } = req.user;
-    // Fetch the user from the database using the roll number from the token.
-    // Exclude the password field for security.
     const user = await User.findOne({ rollno }).select("-password");
     if (!user) {
       return res.status(404).json({ message: "User not found" });

@@ -33,6 +33,7 @@ export default function EnhancedAskQuestion() {
   const [title, setTitle] = useState("");
   const [details, setDetails] = useState("");
   const [subject, setSubject] = useState("");
+  const [wisdomPoints, setWisdomPoints] = useState(0); // New state for wisdom points
   const [attachments, setAttachments] = useState<File[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showDialog, setShowDialog] = useState(false);
@@ -86,7 +87,7 @@ export default function EnhancedAskQuestion() {
           title,
           details,
           subject,
-          wisdomPoints: 0, // default value
+          wisdomPoints, // Send the assigned wisdom points
         }),
       });
       if (res.ok) {
@@ -95,6 +96,7 @@ export default function EnhancedAskQuestion() {
         setTitle("");
         setDetails("");
         setSubject("");
+        setWisdomPoints(0);
         setAttachments([]);
         // Redirect to Home page after submission
         navigate("/Home");
@@ -167,6 +169,20 @@ export default function EnhancedAskQuestion() {
                 <SelectItem value="cs">Computer Science</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          {/* New input for wisdom points */}
+          <div>
+            <Label htmlFor="wisdomPoints" className="text-purple-800">
+              Wisdom Points (optional)
+            </Label>
+            <Input
+              id="wisdomPoints"
+              type="number"
+              value={wisdomPoints}
+              onChange={(e) => setWisdomPoints(Number(e.target.value))}
+              placeholder="Assign wisdom points"
+              className="mt-1"
+            />
           </div>
           <div>
             <Label htmlFor="file-upload" className="text-purple-800">
