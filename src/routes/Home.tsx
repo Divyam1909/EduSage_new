@@ -23,7 +23,6 @@ import {
   Bell,
   Search,
   HelpCircle,
-  BookOpen,
   Users,
   FileText,
   HelpCircle as Quiz,
@@ -38,8 +37,15 @@ import {
 export default function Home() {
   const [isAskModalOpen, setIsAskModalOpen] = useState(false);
   const [userData, setUserData] = useState<any>(null);
+  const [questions, setQuestions] = useState<any[]>([]);
 
-  // Fetch some sample data from Django API (unchanged)
+  // States for the Ask Question form
+  const [askSubject, setAskSubject] = useState("");
+  const [askTitle, setAskTitle] = useState("");
+  const [askDetails, setAskDetails] = useState("");
+  const [askWisdomPoints, setAskWisdomPoints] = useState(0);
+
+  // Sample data fetch (this call can be removed if not needed)
   useEffect(() => {
     axios
       .get("http://localhost:8000/api/data/")
@@ -51,14 +57,14 @@ export default function Home() {
       });
   }, []);
 
-  // NEW: Fetch logged-in user profile from your backend
+  // Fetch logged-in user profile from your backend
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (token) {
       fetch("http://localhost:5000/profile", {
         headers: {
           "Content-Type": "application/json",
-          "Authorization": "Bearer " + token,
+          Authorization: "Bearer " + token,
         },
       })
         .then((response) => response.json())
@@ -69,43 +75,21 @@ export default function Home() {
     }
   }, []);
 
-  const questions = [
-    {
-      id: 1,
-      subject: "COA",
-      title: "How do I design a 5-stage pipeline processor?",
-      answers: 4,
-      points: 12,
-      askedAt: new Date("2023-06-15T14:30:00"),
-      solved: false,
-    },
-    {
-      id: 2,
-      subject: "DSA",
-      title: "What is the time complexity of merge sort?",
-      answers: 3,
-      points: 10,
-      askedAt: new Date("2023-06-14T09:45:00"),
-      solved: true,
-    },
-    {
-      id: 3,
-      subject: "DLDA",
-      title: "Can someone explain the working of a 4-bit synchronous counter?",
-      answers: 5,
-      points: 8,
-      askedAt: new Date("2023-06-13T18:20:00"),
-      solved: true,
-    },
-  ];
+  // Fetch questions from your backend
+  const fetchQuestions = async () => {
+    try {
+      const response = await axios.get("http://localhost:5000/api/questions");
+      setQuestions(response.data);
+    } catch (error) {
+      console.error("Error fetching questions!", error);
+    }
+  };
 
-  const topUsers = [
-    { name: "Arjun", points: 1250 },
-    { name: "Gargi", points: 980 },
-    { name: "Divyam", points: 875 },
-  ];
+  useEffect(() => {
+    fetchQuestions();
+  }, []);
 
-  // Default profile details for the right column (kept unchanged except for the name)
+  // Default profile details for the right column
   const userProfile = {
     name: userData && userData.name ? userData.name : "Arjun Varshney",
     level: 5,
@@ -135,12 +119,37 @@ export default function Home() {
       .map((word) => word[0])
       .join("");
 
+  // Handle Ask Question form submission
+  const handleAskSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    try {
+      const res = await axios.post("http://localhost:5000/api/questions", {
+        title: askTitle,
+        details: askDetails,
+        subject: askSubject,
+        wisdomPoints: askWisdomPoints,
+      });
+      if (res.status === 201) {
+        alert("Question submitted successfully");
+        fetchQuestions();
+        setAskSubject("");
+        setAskTitle("");
+        setAskDetails("");
+        setAskWisdomPoints(0);
+        setIsAskModalOpen(false);
+      }
+    } catch (error) {
+      console.error("Error submitting question", error);
+      alert("Error submitting question");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 flex">
       {/* Left Side Menu */}
       <aside className="w-64 bg-purple-800 text-white p-4">
         <div className="flex items-center mb-8">
-         <img src="/ES_logo.png" alt="Your Logo" className="w-20 h-20 mr-2" />
+          <img src="/ES_logo2.png" alt="Your Logo" className="w-20 h-20 mr-2" />
           <h1 className="text-2xl font-bold">EduSage</h1>
         </div>
         <nav>
@@ -251,14 +260,11 @@ export default function Home() {
             </div>
             <div className="flex items-center space-x-4">
               <Bell className="w-6 h-6" />
-              {/* Updated: Avatar now shows logged-in user's initials */}
               <Link to="/profile">
                 <Avatar>
                   <AvatarImage src="/placeholder-user.jpg" alt="User" />
                   <AvatarFallback className="text-black">
-                    {userData && userData.name
-                      ? getInitials(userData.name)
-                      : "AV"}
+                    {userData && userData.name ? getInitials(userData.name) : "AV"}
                   </AvatarFallback>
                 </Avatar>
               </Link>
@@ -266,15 +272,15 @@ export default function Home() {
           </div>
         </header>
 
-        {/* Main content */}
+        {/* Main Content */}
         <main className="flex-1 max-w-6xl my-8 flex px-12 space-x-8">
-          {/* Question feed */}
+          {/* Question Feed */}
           <div className="w-1/2 flex flex-col">
             <h2 className="text-2xl font-bold mb-4">Recent Questions</h2>
             <div className="flex-2 overflow-y-auto mb-4">
               {questions.map((question) => (
                 <div
-                  key={question.id}
+                  key={question._id}
                   className="bg-white rounded-lg shadow-md p-4 mb-4"
                 >
                   <div className="flex justify-between items-center mb-2">
@@ -282,7 +288,7 @@ export default function Home() {
                       {question.subject}
                     </span>
                     <span className="text-sm text-gray-500">
-                      {question.points} wisdom points
+                      {question.wisdomPoints} wisdom points
                     </span>
                   </div>
                   <h3 className="text-lg font-semibold mb-2">
@@ -290,7 +296,7 @@ export default function Home() {
                   </h3>
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-sm text-gray-500">
-                      Asked on: {formatDate(question.askedAt)}
+                      Asked on: {formatDate(new Date(question.askedAt))}
                     </span>
                     <span
                       className={`text-sm font-semibold flex items-center ${
@@ -309,7 +315,7 @@ export default function Home() {
                   </div>
                   <div className="flex justify-between items-center">
                     <Button variant="outline">
-                      View Answers ({question.answers})
+                      View Answers ({question.answers || 0})
                     </Button>
                     <Link to="/solutions">
                       <Button>Share Wisdom</Button>
@@ -326,9 +332,8 @@ export default function Home() {
             </Button>
           </div>
 
-          {/* Right column: Profile and Top Sages */}
+          {/* Right Column: Profile and Top Sages */}
           <div className="w-1/2 space-y-8 flex flex-col">
-            {/* Personal Advancement/Profile */}
             <Link to="/profile">
               <div className="bg-white rounded-lg shadow-md p-6">
                 <div className="flex items-center mb-4">
@@ -408,7 +413,11 @@ export default function Home() {
             {/* Top Sages */}
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="text-xl font-semibold mb-4">Top Sages</h3>
-              {topUsers.map((user, index) => (
+              {[
+                { name: "Arjun", points: 1250 },
+                { name: "Gargi", points: 980 },
+                { name: "Divyam", points: 875 },
+              ].map((user, index) => (
                 <div
                   key={index}
                   className="flex justify-between items-center mb-2"
@@ -435,8 +444,8 @@ export default function Home() {
           <DialogHeader>
             <DialogTitle>Seek Wisdom</DialogTitle>
           </DialogHeader>
-          <form className="space-y-4">
-            <Select>
+          <form className="space-y-4" onSubmit={handleAskSubmit}>
+            <Select onValueChange={(value) => setAskSubject(value)}>
               <SelectTrigger>
                 <SelectValue placeholder="Select subject" />
               </SelectTrigger>
@@ -447,13 +456,23 @@ export default function Home() {
                 <SelectItem value="literature">Literature</SelectItem>
               </SelectContent>
             </Select>
-            <Input placeholder="Enter your question" />
-            <Textarea placeholder="Provide more details about your inquiry" />
+            <Input
+              placeholder="Enter your question"
+              value={askTitle}
+              onChange={(e) => setAskTitle(e.target.value)}
+            />
+            <Textarea
+              placeholder="Provide more details about your inquiry"
+              value={askDetails}
+              onChange={(e) => setAskDetails(e.target.value)}
+            />
             <Input
               type="number"
               placeholder="Wisdom points to offer (1-20)"
               min="1"
               max="20"
+              value={askWisdomPoints}
+              onChange={(e) => setAskWisdomPoints(Number(e.target.value))}
             />
             <Button type="submit" className="w-full">
               Submit Inquiry

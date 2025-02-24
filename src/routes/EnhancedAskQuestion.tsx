@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,6 +29,7 @@ const previousQuestions = [
 ];
 
 export default function EnhancedAskQuestion() {
+  const navigate = useNavigate();
   const [title, setTitle] = useState("");
   const [details, setDetails] = useState("");
   const [subject, setSubject] = useState("");
@@ -72,13 +74,46 @@ export default function EnhancedAskQuestion() {
     alert(`Redirecting to the existing question: ${selectedQuestion}`);
   };
 
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    try {
+      const res = await fetch("http://localhost:5000/api/questions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title,
+          details,
+          subject,
+          wisdomPoints: 0, // default value
+        }),
+      });
+      if (res.ok) {
+        alert("Question submitted successfully!");
+        // Reset form fields
+        setTitle("");
+        setDetails("");
+        setSubject("");
+        setAttachments([]);
+        // Redirect to Home page after submission
+        navigate("/Home");
+      } else {
+        alert("Error submitting question");
+      }
+    } catch (error) {
+      console.error("Error submitting question", error);
+      alert("Error submitting question");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-purple-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl">
         <h2 className="text-2xl font-bold text-purple-800 mb-6">
           Ask Your Question
         </h2>
-        <form className="space-y-6">
+        <form className="space-y-6" onSubmit={handleSubmit}>
           <div>
             <Label htmlFor="title" className="text-purple-800">
               Question Title
@@ -142,7 +177,9 @@ export default function EnhancedAskQuestion() {
                 type="button"
                 variant="outline"
                 className="text-purple-600 border-purple-600 hover:bg-purple-100"
-                onClick={() => document.getElementById("file-upload")?.click()}
+                onClick={() =>
+                  document.getElementById("file-upload")?.click()
+                }
               >
                 <Upload className="h-4 w-4 mr-2" />
                 Upload Files

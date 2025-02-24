@@ -1,10 +1,29 @@
 "use client";
 
 import { Key, useState } from "react";
-import { Star, ThumbsUp, MessageSquare, Plus, Bot, Calendar, FileText, Users, BookOpen, Bookmark, HelpCircle as Quiz, User,} from "lucide-react";
+import {
+  Star,
+  ThumbsUp,
+  MessageSquare,
+  Plus,
+  Bot,
+  Calendar,
+  FileText,
+  Users,
+  BookOpen,
+  Bookmark,
+  HelpCircle as Quiz,
+  User,
+} from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Link } from "react-router-dom";
 
@@ -19,51 +38,58 @@ interface Answer {
   attachments?: File[]; // Optional attachments property
 }
 
-// Define the Question type
+// Define the Question type with wisdomPoints
 interface Question {
   id: number;
   title: string;
   subject: string;
-  answers: Answer[]; // Use the Answer type here
+  answers: Answer[];
+  wisdomPoints: number;
 }
 
-// Mock data for a single question and its answers
-const question: Question = {
+// Initial mock data for a single question and its answers
+const initialQuestion: Question = {
   id: 1,
   title: "What is the time complexity of QuickSort?",
   subject: "Data Structures and Algorithms",
+  wisdomPoints: 0,
   answers: [
     {
       id: 1,
       user: "Alice",
-      content: "The average time complexity of QuickSort is O(n log n). It works efficiently on large datasets due to its divide-and-conquer approach. However, in the worst case, its time complexity is O(n^2) when the pivot selection is poor.",
+      content:
+        "The average time complexity of QuickSort is O(n log n). It works efficiently on large datasets due to its divide-and-conquer approach. However, in the worst case, its time complexity is O(n^2) when the pivot selection is poor.",
       points: 5,
       likes: 12,
       comments: 3,
-      attachments: [], // Initialize with an empty array
+      attachments: [],
     },
     {
       id: 2,
       user: "Bob",
-      content: "QuickSort is typically faster than MergeSort because of better cache performance. Although its worst-case is O(n^2), the randomized version helps avoid this in most practical scenarios, making it O(n log n) on average.",
+      content:
+        "QuickSort is typically faster than MergeSort because of better cache performance. Although its worst-case is O(n^2), the randomized version helps avoid this in most practical scenarios, making it O(n log n) on average.",
       points: 4,
       likes: 8,
       comments: 1,
-      attachments: [], // Initialize with an empty array
+      attachments: [],
     },
   ],
 };
 
 export default function Component() {
+  const [currentQuestion, setCurrentQuestion] = useState<Question>(
+    initialQuestion
+  );
   const [showAllAnswers, setShowAllAnswers] = useState(false);
   const [showAnswerForm, setShowAnswerForm] = useState(false);
   const [newAnswer, setNewAnswer] = useState("");
-  const [answers, setAnswers] = useState(question.answers);
+  const [answers, setAnswers] = useState(currentQuestion.answers);
   const [attachments, setAttachments] = useState<File[]>([]);
 
   const displayedAnswers = showAllAnswers ? answers : answers.slice(0, 1);
 
-  // Update the handleFileUpload function to match the expected type
+  // Update the handleFileUpload function
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files) {
@@ -76,17 +102,46 @@ export default function Component() {
     if (newAnswer.trim() || attachments.length > 0) {
       const newAnswerObj: Answer = {
         id: answers.length + 1,
-        user: "You", // In a real app, this would be the logged-in user's name
+        user: "You", // In a real app, use the logged-in user's name
         content: newAnswer,
         points: 0,
         likes: 0,
         comments: 0,
         attachments,
       };
-      setAnswers([...answers, newAnswerObj]);
+      const updatedAnswers = [...answers, newAnswerObj];
+      setAnswers(updatedAnswers);
+      // Optionally, update the currentQuestion as well if needed
       setNewAnswer("");
       setShowAnswerForm(false);
-      setAttachments([]); // Clear attachments after submission
+      setAttachments([]);
+    }
+  };
+
+  // Function to share wisdom (add wisdom points to the question)
+  const shareWisdom = async () => {
+    try {
+      const res = await fetch(
+        `http://localhost:5000/api/questions/${currentQuestion.id}/wisdom`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wisdomPoints: 1 }),
+        }
+      );
+      if (res.ok) {
+        const updatedQuestion = await res.json();
+        // Update local state with the new wisdomPoints value
+        setCurrentQuestion({
+          ...currentQuestion,
+          wisdomPoints: updatedQuestion.wisdomPoints,
+        });
+      } else {
+        alert("Error sharing wisdom");
+      }
+    } catch (error) {
+      console.error("Error sharing wisdom", error);
+      alert("Error sharing wisdom");
     }
   };
 
@@ -102,13 +157,13 @@ export default function Component() {
           <ul className="space-y-2">
             <li>
               <Link to="/Home">
-              <Button
-                variant="ghost"
-                className="w-full justify-start hover:bg-white hover:text-black transition-colors"
-              >
-                <Users className="mr-2 h-4 w-4" />
-                Discussion Forum
-              </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
+                  <Users className="mr-2 h-4 w-4" />
+                  Discussion Forum
+                </Button>
               </Link>
             </li>
             <li>
@@ -191,8 +246,22 @@ export default function Component() {
         <main className="container mx-auto p-4">
           <Card className="mb-6">
             <CardHeader>
-              <CardTitle className="text-2xl">{question.title}</CardTitle>
+              <CardTitle className="text-2xl">{currentQuestion.title}</CardTitle>
             </CardHeader>
+            <CardContent>
+              <p>
+                <strong>Subject:</strong> {currentQuestion.subject}
+              </p>
+              <p>
+                <strong>Wisdom Points:</strong> {currentQuestion.wisdomPoints}
+              </p>
+              <Button
+                onClick={shareWisdom}
+                className="mt-2 bg-purple-600 text-white hover:bg-purple-700"
+              >
+                Share Wisdom
+              </Button>
+            </CardContent>
           </Card>
 
           <h2 className="text-xl font-semibold mb-4">Solutions:</h2>
@@ -201,7 +270,9 @@ export default function Component() {
               <CardHeader>
                 <div className="flex items-center gap-2">
                   <Avatar>
-                    <AvatarImage src={`https://api.dicebear.com/6.x/initials/svg?seed=${answer.user}`} />
+                    <AvatarImage
+                      src={`https://api.dicebear.com/6.x/initials/svg?seed=${answer.user}`}
+                    />
                     <AvatarFallback>{answer.user[0]}</AvatarFallback>
                   </Avatar>
                   <span className="font-semibold">{answer.user}</span>
@@ -211,11 +282,13 @@ export default function Component() {
                 <p>{answer.content}</p>
                 {answer.attachments?.length ? (
                   <div className="mt-2">
-                    {answer.attachments.map((file: File, index: Key | null | undefined) => (
-                      <div key={index} className="flex gap-2">
-                        <FileText className="w-4 h-4" /> {file.name}
-                      </div>
-                    ))}
+                    {answer.attachments.map(
+                      (file: File, index: Key | null | undefined) => (
+                        <div key={index} className="flex gap-2">
+                          <FileText className="w-4 h-4" /> {file.name}
+                        </div>
+                      )
+                    )}
                   </div>
                 ) : null}
               </CardContent>
@@ -235,7 +308,11 @@ export default function Component() {
                   {[...Array(5)].map((_, i) => (
                     <Star
                       key={i}
-                      className={`w-4 h-4 ${i < answer.points ? "text-yellow-400 fill-yellow-400" : "text-gray-300"}`}
+                      className={`w-4 h-4 ${
+                        i < answer.points
+                          ? "text-yellow-400 fill-yellow-400"
+                          : "text-gray-300"
+                      }`}
                     />
                   ))}
                 </div>
@@ -277,7 +354,10 @@ export default function Component() {
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" className="bg-purple-600 text-white hover:bg-purple-700 transition-colors">
+                  <Button
+                    type="submit"
+                    className="bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                  >
                     Submit Answer
                   </Button>
                 </div>
