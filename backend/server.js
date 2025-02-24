@@ -20,7 +20,13 @@ mongoose
 
 /** ========== USER SCHEMA ========== **/
 const UserSchema = new mongoose.Schema({
+  name: { type: String, required: true },
   rollno: { type: String, unique: true, required: true },
+  branch: { type: String, required: true },
+  sem: { type: Number, required: true },
+  dateOfBirth: { type: Date, required: true },
+  phone: { type: String, required: true },
+  email: { type: String, required: true },
   password: { type: String, required: true },
 });
 
@@ -46,7 +52,8 @@ const Question = require("./models/question.js");
 /** ========== REGISTER USER API ========== **/
 app.post("/register", async (req, res) => {
   try {
-    const { rollno, password } = req.body;
+    const { name, rollno, branch, sem, dateOfBirth, phone, email, password } =
+      req.body;
     const existingUser = await User.findOne({ rollno });
 
     if (existingUser) {
@@ -54,7 +61,16 @@ app.post("/register", async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = new User({ rollno, password: hashedPassword });
+    const newUser = new User({
+      name,
+      rollno,
+      branch,
+      sem,
+      dateOfBirth,
+      phone,
+      email,
+      password: hashedPassword,
+    });
     await newUser.save();
 
     res.status(201).json({ message: "User registered successfully" });
@@ -318,7 +334,6 @@ app.get("/profile", authenticateToken, async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-
 
 /** ========== START SERVER ========== **/
 const PORT = process.env.PORT || 5000;

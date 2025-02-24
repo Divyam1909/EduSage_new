@@ -39,7 +39,7 @@ export default function ProfilePage() {
       fetch("http://localhost:5000/profile", {
         headers: {
           "Content-Type": "application/json",
-          "Authorization": "Bearer " + token,
+          Authorization: "Bearer " + token,
         },
       })
         .then((response) => response.json())
@@ -119,7 +119,7 @@ export default function ProfilePage() {
       {/* Left Side Menu */}
       <aside className="w-64 bg-purple-800 text-white p-4">
         <div className="flex items-center mb-8">
-        <img src="/ES_logo2.png" alt="Your Logo" className="w-20 h-20 mr-2" />
+          <img src="/ES_logo2.png" alt="Your Logo" className="w-20 h-20 mr-2" />
           <h1 className="text-2xl font-bold">EduSage</h1>
         </div>
         <nav>
@@ -207,15 +207,6 @@ export default function ProfilePage() {
 
       {/* Main Content */}
       <div className="flex-1">
-        {/* Header */}
-        {/* <header className="bg-purple-800 text-white p-4">
-          <div className="container mx-auto flex items-center">
-            <BookOpen className="w-8 h-8 mr-2" />
-            <h1 className="text-2xl font-bold">EduSage</h1>
-          </div>
-        </header> */}
-
-        {/* Main content */}
         <main className="container mx-auto mt-8 p-4">
           <div className="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto">
             <div className="flex flex-col md:flex-row items-center mb-6">
