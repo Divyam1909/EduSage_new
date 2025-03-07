@@ -11,10 +11,7 @@ app.use(cors());
 
 // Connect to MongoDB
 mongoose
-  .connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
+  .connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB connected"))
   .catch((err) => console.error("MongoDB connection error:", err));
 
@@ -262,6 +259,29 @@ app.delete("/api/events/:id", async (req, res) => {
     res.json({ message: "Event deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: "Server error" });
+  }
+});
+
+/** ========== New Endpoint: Upload Academic Calendar PDF ========== **/
+const multer = require("multer");
+const upload = multer(); // Using memory storage
+const { extractEventsFromPDF } = require("./pdfParser");
+
+app.post("/api/calendar/upload", upload.single("pdf"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+    const events = await extractEventsFromPDF(req.file.buffer);
+    if (events.length > 0) {
+      await Event.insertMany(events);
+      res.status(200).json({ message: "Events uploaded successfully", events });
+    } else {
+      res.status(400).json({ message: "No events found in the uploaded file" });
+    }
+  } catch (error) {
+    console.error("Error processing PDF:", error);
+    res.status(500).json({ message: "Server error processing PDF" });
   }
 });
 

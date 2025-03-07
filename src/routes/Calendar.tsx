@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Bookmark, Bot, Calendar, ChevronLeft, ChevronRight, FileText, PlusCircle, User, Users, HelpCircle as Quiz} from "lucide-react";
+import { Bookmark, Bot, Calendar, ChevronLeft, ChevronRight, FileText, PlusCircle, User, Users, HelpCircle as Quiz } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,28 +12,30 @@ interface Event {
   id?: string;
   title: string;
   date: string; // ISO string including time if provided
-  time?: string; // original time input (optional)
+  time?: string;
   details?: string;
 }
 
-export default function Component() {
+export default function CalendarComponent() {
   const [currentDateTime, setCurrentDateTime] = useState(new Date());
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [isModalOpen, setIsModalOpen] = useState(false); // for event details modal
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
-  const [isAddEventModalOpen, setIsAddEventModalOpen] = useState(false); // for add/edit modal
+  const [isAddEventModalOpen, setIsAddEventModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [newEvent, setNewEvent] = useState({ title: "", date: "", time: "", details: "" });
+  
+  // New states for PDF upload
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
-  // Helper to compute time left from now until eventDateTime
   const getTimeLeft = (eventDate: Date) => {
     const now = new Date();
     const diff = eventDate.getTime() - now.getTime();
-    if (diff < 0) {
-      return "Event has already passed.";
-    }
+    if (diff < 0) return "Event has already passed.";
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
     const minutes = Math.floor((diff / (1000 * 60)) % 60);
@@ -43,12 +45,20 @@ export default function Component() {
   useEffect(() => {
     axios.get("http://localhost:5000/api/events")
       .then((response) => {
-        // Transform _id to id if needed
         const transformed = response.data.map((ev: any) => ({ ...ev, id: ev._id }));
         setEvents(transformed);
       })
       .catch((error) => console.error("Error fetching events:", error));
   }, []);
+
+  const refreshEvents = () => {
+    axios.get("http://localhost:5000/api/events")
+      .then((response) => {
+        const transformed = response.data.map((ev: any) => ({ ...ev, id: ev._id }));
+        setEvents(transformed);
+      })
+      .catch((error) => console.error("Error fetching events:", error));
+  };
 
   const handleAddEvent = async () => {
     if (!newEvent.title || !newEvent.date) {
@@ -105,6 +115,32 @@ export default function Component() {
     }
   };
 
+  // PDF Upload Handlers
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedFile(e.target.files[0]);
+    }
+  };
+
+  const handleUploadPDF = async () => {
+    if (!selectedFile) return;
+    setUploading(true);
+    const formData = new FormData();
+    formData.append("pdf", selectedFile);
+    try {
+      // Let axios automatically set the Content-Type (do not set it explicitly)
+      const response = await axios.post("http://localhost:5000/api/calendar/upload", formData);
+      alert(response.data.message);
+      setShowUploadModal(false);
+      setSelectedFile(null);
+      refreshEvents();
+    } catch (error) {
+      console.error("Error uploading PDF:", error);
+      alert("Error uploading PDF");
+    }
+    setUploading(false);
+  };
+
   useEffect(() => {
     const timer = setInterval(() => setCurrentDateTime(new Date()), 1000);
     return () => clearInterval(timer);
@@ -134,26 +170,20 @@ export default function Component() {
       {/* Left Sidebar */}
       <aside className="w-64 bg-purple-800 text-white p-4">
         <div className="flex items-center mb-8">
-        <img src="/ES_logo2.png" alt="Your Logo" className="w-20 h-20 mr-2" />
+          <img src="/ES_logo2.png" alt="Your Logo" className="w-20 h-20 mr-2" />
           <h1 className="text-2xl font-bold">EduSage</h1>
         </div>
         <nav>
           <ul className="space-y-2">
             <li>
-              <Button
-                variant="ghost"
-                className="w-full justify-start hover:bg-white hover:text-black transition-colors"
-              >
+              <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
                 <Users className="mr-2 h-4 w-4" />
                 Discussion Forum
               </Button>
             </li>
             <li>
               <Link to="/Resources">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
-                >
+                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
                   <FileText className="mr-2 h-4 w-4" />
                   Resources
                 </Button>
@@ -161,10 +191,7 @@ export default function Component() {
             </li>
             <li>
               <Link to="/quiz">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
-                >
+                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
                   <Quiz className="mr-2 h-4 w-4" />
                   Quizzes
                 </Button>
@@ -172,10 +199,7 @@ export default function Component() {
             </li>
             <li>
               <Link to="/profile">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
-                >
+                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
                   <User className="mr-2 h-4 w-4" />
                   Profile
                 </Button>
@@ -183,10 +207,7 @@ export default function Component() {
             </li>
             <li>
               <Link to="/bookmark">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
-                >
+                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
                   <Bookmark className="mr-2 h-4 w-4" />
                   Bookmarks
                 </Button>
@@ -194,10 +215,7 @@ export default function Component() {
             </li>
             <li>
               <Link to="/calendar">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
-                >
+                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
                   <Calendar className="mr-2 h-4 w-4" />
                   Calendar
                 </Button>
@@ -205,10 +223,7 @@ export default function Component() {
             </li>
             <li>
               <Link to="/ai">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
-                >
+                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
                   <Bot className="mr-2 h-4 w-4" />
                   AI Assistant
                 </Button>
@@ -222,7 +237,7 @@ export default function Component() {
       <div className="flex-1 flex flex-col p-8">
         <h1 className="text-4xl font-bold text-purple-800 mb-6">EduSage Calendar</h1>
 
-        {/* Current Date & Time Bar (12-hr format) */}
+        {/* Current Date & Time Bar */}
         <div className="bg-white rounded-lg shadow-lg p-4 mb-6 border border-purple-200">
           <p className="text-xl text-purple-600 font-semibold">
             Current Date and Time: {currentDateTime.toLocaleString("en-US", { 
@@ -237,18 +252,15 @@ export default function Component() {
           </p>
         </div>
 
-        {/* Add Event Button */}
-        <div className="flex items-center mb-4">
-          <Button
-            variant="outline"
-            onClick={() => {
-              setIsAddEventModalOpen(true);
-              setIsEditMode(false);
-            }}
-            className="flex items-center space-x-2"
-          >
+        {/* Top Buttons: Add Event & Upload Academic Calendar */}
+        <div className="flex items-center mb-4 space-x-4">
+          <Button variant="outline" onClick={() => { setIsAddEventModalOpen(true); setIsEditMode(false); }} className="flex items-center space-x-2">
             <PlusCircle className="w-6 h-6 text-purple-600" />
             <span>Add Event</span>
+          </Button>
+          <Button variant="outline" onClick={() => setShowUploadModal(true)} className="flex items-center space-x-2">
+            <FileText className="w-6 h-6 text-purple-600" />
+            <span>Upload Academic Calendar</span>
           </Button>
         </div>
 
@@ -272,7 +284,7 @@ export default function Component() {
           ))}
         </div>
 
-        {/* Calendar */}
+        {/* Calendar Grid */}
         <div className="grid grid-cols-7 gap-4">
           {Array.from({ length: firstDayOfMonth }).map((_, i) => (
             <div key={`empty-${i}`} className="p-2"></div>
@@ -284,11 +296,7 @@ export default function Component() {
               <div
                 key={i}
                 className="flex flex-col items-center h-16 border border-purple-200 rounded-lg cursor-pointer hover:bg-purple-50"
-                onClick={() => {
-                  if (dayEvents.length) {
-                    handleEventClick(dayEvents[0]);
-                  }
-                }}
+                onClick={() => { if (dayEvents.length) handleEventClick(dayEvents[0]); }}
               >
                 <span className="mb-1">{i + 1}</span>
                 {dayEvents.map((event) => (
@@ -306,41 +314,13 @@ export default function Component() {
       {isAddEventModalOpen && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white border border-purple-300 p-6 rounded-lg shadow-xl w-96">
-            <h2 className="text-2xl font-bold mb-4 text-purple-800">
-              {isEditMode ? "Edit Event" : "Add New Event"}
-            </h2>
-            <Input
-              type="text"
-              placeholder="Event Title"
-              className="mb-2"
-              value={newEvent.title}
-              onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
-            />
-            <Input
-              type="date"
-              className="mb-2"
-              value={newEvent.date}
-              onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })}
-            />
-            <Input
-              type="time"
-              placeholder="Event Time (optional)"
-              className="mb-2"
-              value={newEvent.time}
-              onChange={(e) => setNewEvent({ ...newEvent, time: e.target.value })}
-            />
-            <Textarea
-              placeholder="Event Details (optional)"
-              className="mb-2"
-              value={newEvent.details}
-              onChange={(e) => setNewEvent({ ...newEvent, details: e.target.value })}
-            />
-            <Button onClick={isEditMode ? handleUpdateEvent : handleAddEvent} className="w-full">
-              {isEditMode ? "Update Event" : "Add Event"}
-            </Button>
-            <Button onClick={() => { setIsAddEventModalOpen(false); setIsEditMode(false); }} className="w-full mt-2">
-              Cancel
-            </Button>
+            <h2 className="text-2xl font-bold mb-4 text-purple-800">{isEditMode ? "Edit Event" : "Add New Event"}</h2>
+            <Input type="text" placeholder="Event Title" className="mb-2" value={newEvent.title} onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })} />
+            <Input type="date" className="mb-2" value={newEvent.date} onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })} />
+            <Input type="time" placeholder="Event Time (optional)" className="mb-2" value={newEvent.time} onChange={(e) => setNewEvent({ ...newEvent, time: e.target.value })} />
+            <Textarea placeholder="Event Details (optional)" className="mb-2" value={newEvent.details} onChange={(e) => setNewEvent({ ...newEvent, details: e.target.value })} />
+            <Button onClick={isEditMode ? handleUpdateEvent : handleAddEvent} className="w-full">{isEditMode ? "Update Event" : "Add Event"}</Button>
+            <Button onClick={() => { setIsAddEventModalOpen(false); setIsEditMode(false); }} className="w-full mt-2">Cancel</Button>
           </div>
         </div>
       )}
@@ -363,33 +343,38 @@ export default function Component() {
               })}
             </p>
             <p className="mb-4">{selectedEvent.details}</p>
-            {/* Display time left until event */}
-            <p className="mb-4 text-sm text-gray-600">
-              {getTimeLeft(new Date(selectedEvent.date))}
-            </p>
+            <p className="mb-4 text-sm text-gray-600">{getTimeLeft(new Date(selectedEvent.date))}</p>
             <div className="flex space-x-2">
-              <Button
-                onClick={() => {
-                  setNewEvent({
-                    title: selectedEvent.title,
-                    date: selectedEvent.date.substring(0, 10),
-                    time: selectedEvent.time || "",
-                    details: selectedEvent.details || ""
-                  });
-                  setIsEditMode(true);
-                  setIsModalOpen(false);
-                  setIsAddEventModalOpen(true);
-                }}
-              >
+              <Button onClick={() => { 
+                setNewEvent({ 
+                  title: selectedEvent.title, 
+                  date: selectedEvent.date.substring(0, 10), 
+                  time: selectedEvent.time || "", 
+                  details: selectedEvent.details || "" 
+                }); 
+                setIsEditMode(true); 
+                setIsModalOpen(false); 
+                setIsAddEventModalOpen(true); 
+              }}>
                 Edit
               </Button>
-              <Button onClick={handleDeleteEvent} variant="destructive">
-                Delete
-              </Button>
+              <Button onClick={handleDeleteEvent} variant="destructive">Delete</Button>
             </div>
-            <Button onClick={() => setIsModalOpen(false)} className="w-full mt-2">
-              Close
+            <Button onClick={() => setIsModalOpen(false)} className="w-full mt-2">Close</Button>
+          </div>
+        </div>
+      )}
+
+      {/* PDF Upload Modal */}
+      {showUploadModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white border border-purple-300 p-6 rounded-lg shadow-xl w-96">
+            <h2 className="text-2xl font-bold mb-4 text-purple-800">Upload Academic Calendar PDF</h2>
+            <Input type="file" accept="application/pdf" onChange={handleFileChange} className="mb-4" />
+            <Button onClick={handleUploadPDF} disabled={uploading} className="w-full">
+              {uploading ? "Uploading..." : "Upload"}
             </Button>
+            <Button onClick={() => setShowUploadModal(false)} className="w-full mt-2">Cancel</Button>
           </div>
         </div>
       )}
