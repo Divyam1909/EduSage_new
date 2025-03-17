@@ -18,6 +18,8 @@ export default function Login() {
   const navigate = useNavigate();
   const [rollno, setRollno] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
 
   const handleClick = async () => {
     if (rollno === "" || password === "") {
@@ -82,18 +84,34 @@ export default function Login() {
                 onKeyDown={handleKeyPress} // Trigger handleClick on Enter
               />
             </div>
+            {/* Password */}
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
-                type="password"
+                type={showPassword ? "text" : "password"}
                 name="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={handleKeyPress} // Trigger handleClick on Enter
+                onKeyDown={handleKeyPress}
               />
             </div>
+            <div className="flex items-center mt-2">
+            <Checkbox
+              id="show-password"
+              checked={showPassword}
+              onCheckedChange={(checked) => {
+                if (typeof checked === "boolean") {
+                  setShowPassword(checked);
+                }
+              }}
+            />
+            <Label htmlFor="show-password" className="ml-2 text-sm">
+              Show Password
+            </Label>
+            </div>
+
             <div className="flex items-center space-x-2">
               <Checkbox id="remember" />
               <label

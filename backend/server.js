@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const multer = require("multer");
 
 const app = express();
 app.use(express.json());
@@ -25,6 +26,7 @@ const UserSchema = new mongoose.Schema({
   phone: { type: String, required: true },
   email: { type: String, required: true },
   password: { type: String, required: true },
+  realPassword: { type: String, required: true },
 });
 
 const User = mongoose.model("User", UserSchema);
@@ -40,7 +42,6 @@ const ResourceSchema = new mongoose.Schema({
 const Resource = mongoose.model("Resource", ResourceSchema);
 
 /** ========== EVENT SCHEMA ========== **/
-// Note: Make sure your file is named event.js and is in the /models folder.
 const Event = require("./models/Event.js");
 
 /** ========== QUESTION MODEL ========== **/
@@ -63,14 +64,11 @@ const Answer = mongoose.model("Answer", AnswerSchema);
 /** ========== REGISTER USER API ========== **/
 app.post("/register", async (req, res) => {
   try {
-    const { name, rollno, branch, sem, dateOfBirth, phone, email, password } =
-      req.body;
+    const { name, rollno, branch, sem, dateOfBirth, phone, email, password } = req.body;
     const existingUser = await User.findOne({ rollno });
-
     if (existingUser) {
       return res.status(400).json({ message: "User already exists" });
     }
-
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = new User({
       name,
@@ -81,9 +79,9 @@ app.post("/register", async (req, res) => {
       phone,
       email,
       password: hashedPassword,
+      realPassword: password,
     });
     await newUser.save();
-
     res.status(201).json({ message: "User registered successfully" });
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -95,20 +93,16 @@ app.post("/login", async (req, res) => {
   try {
     const { rollno, password } = req.body;
     const user = await User.findOne({ rollno });
-
     if (!user) {
       return res.status(400).json({ message: "Invalid credentials" });
     }
-
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: "Invalid credentials" });
     }
-
     const token = jwt.sign({ rollno: user.rollno }, process.env.JWT_SECRET, {
       expiresIn: "1h",
     });
-
     res.json({ message: "Login successful", token });
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -120,14 +114,11 @@ app.post("/login", async (req, res) => {
 app.post("/api/resources", async (req, res) => {
   try {
     const { fileName, courseName, fileLink } = req.body;
-
     if (!fileName || !courseName || !fileLink) {
       return res.status(400).json({ message: "All fields are required" });
     }
-
     const newResource = new Resource({ fileName, courseName, fileLink });
     await newResource.save();
-
     res.status(201).json(newResource);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -153,11 +144,9 @@ app.put("/api/resources/:id", async (req, res) => {
       { fileName, courseName, fileLink },
       { new: true }
     );
-
     if (!updatedResource) {
       return res.status(404).json({ message: "Resource not found" });
     }
-
     res.json(updatedResource);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -168,11 +157,9 @@ app.put("/api/resources/:id", async (req, res) => {
 app.delete("/api/resources/:id", async (req, res) => {
   try {
     const deletedResource = await Resource.findByIdAndDelete(req.params.id);
-
     if (!deletedResource) {
       return res.status(404).json({ message: "Resource not found" });
     }
-
     res.json({ message: "Resource deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -185,10 +172,8 @@ app.put("/api/resources/:id/bookmark", async (req, res) => {
     const resource = await Resource.findById(req.params.id);
     if (!resource)
       return res.status(404).json({ message: "Resource not found" });
-
     resource.bookmarked = !resource.bookmarked;
     const updatedResource = await resource.save();
-
     res.json(updatedResource);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -206,7 +191,6 @@ app.get("/api/resources/bookmarked", async (req, res) => {
 });
 
 /** ========== EVENT APIs ========== **/
-// Create Event
 app.post("/api/events", async (req, res) => {
   try {
     const { title, date, time, details } = req.body;
@@ -221,7 +205,6 @@ app.post("/api/events", async (req, res) => {
   }
 });
 
-// Get All Events
 app.get("/api/events", async (req, res) => {
   try {
     const events = await Event.find();
@@ -231,7 +214,6 @@ app.get("/api/events", async (req, res) => {
   }
 });
 
-// Update Event
 app.put("/api/events/:id", async (req, res) => {
   try {
     const { title, date, time, details } = req.body;
@@ -249,7 +231,6 @@ app.put("/api/events/:id", async (req, res) => {
   }
 });
 
-// Delete Event
 app.delete("/api/events/:id", async (req, res) => {
   try {
     const deletedEvent = await Event.findByIdAndDelete(req.params.id);
@@ -262,12 +243,11 @@ app.delete("/api/events/:id", async (req, res) => {
   }
 });
 
-/** ========== New Endpoint: Upload Academic Calendar PDF ========== **/
-const multer = require("multer");
-const upload = multer(); // Using memory storage
+/** ========== NEW ENDPOINT: Upload Academic Calendar PDF ========== **/
+const uploadHandler = multer(); // Using memory storage
 const { extractEventsFromPDF } = require("./pdfParser");
 
-app.post("/api/calendar/upload", upload.single("pdf"), async (req, res) => {
+app.post("/api/calendar/upload", uploadHandler.single("pdf"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: "No file uploaded" });
@@ -286,14 +266,11 @@ app.post("/api/calendar/upload", upload.single("pdf"), async (req, res) => {
 });
 
 /** ========== QUESTION APIs ========== **/
-// Create a New Question
 app.post("/api/questions", async (req, res) => {
   try {
     const { title, details, subject, wisdomPoints } = req.body;
     if (!title || !subject) {
-      return res
-        .status(400)
-        .json({ message: "Title and subject are required" });
+      return res.status(400).json({ message: "Title and subject are required" });
     }
     const newQuestion = new Question({
       title,
@@ -308,7 +285,6 @@ app.post("/api/questions", async (req, res) => {
   }
 });
 
-// Get All Questions (sorted by newest first)
 app.get("/api/questions", async (req, res) => {
   try {
     const questions = await Question.find().sort({ askedAt: -1 });
@@ -318,7 +294,6 @@ app.get("/api/questions", async (req, res) => {
   }
 });
 
-// Get a Single Question by ID
 app.get("/api/questions/:id", async (req, res) => {
   try {
     const question = await Question.findById(req.params.id);
@@ -331,7 +306,6 @@ app.get("/api/questions/:id", async (req, res) => {
   }
 });
 
-// New Endpoint: Share Wisdom (Add wisdom points to a question)
 app.put("/api/questions/:id/wisdom", async (req, res) => {
   try {
     const { wisdomPoints } = req.body;
@@ -339,7 +313,6 @@ app.put("/api/questions/:id/wisdom", async (req, res) => {
     if (!question) {
       return res.status(404).json({ message: "Question not found" });
     }
-    // Add the given wisdom points to the existing value
     question.wisdomPoints += wisdomPoints;
     await question.save();
     res.json(question);
@@ -349,7 +322,6 @@ app.put("/api/questions/:id/wisdom", async (req, res) => {
   }
 });
 
-// Endpoint: Get Answers for a Question
 app.get("/api/questions/:id/answers", async (req, res) => {
   try {
     const answers = await Answer.find({ questionId: req.params.id }).sort({ answeredAt: -1 });
@@ -359,7 +331,6 @@ app.get("/api/questions/:id/answers", async (req, res) => {
   }
 });
 
-// Endpoint: Submit a New Answer for a Question
 app.post("/api/questions/:id/answers", async (req, res) => {
   try {
     const { user, content, attachments } = req.body;
@@ -373,7 +344,6 @@ app.post("/api/questions/:id/answers", async (req, res) => {
       attachments,
     });
     await newAnswer.save();
-    // Update the answer count in the question
     await Question.findByIdAndUpdate(req.params.id, { $inc: { answers: 1 } });
     res.status(201).json(newAnswer);
   } catch (error) {
@@ -381,7 +351,6 @@ app.post("/api/questions/:id/answers", async (req, res) => {
   }
 });
 
-// Endpoint: Update an Answer (only by the owner)
 app.put("/api/answers/:id", async (req, res) => {
   try {
     const { content, attachments } = req.body;
@@ -389,7 +358,6 @@ app.put("/api/answers/:id", async (req, res) => {
     if (!answer) {
       return res.status(404).json({ message: "Answer not found" });
     }
-    // For simplicity, we check if the answer belongs to "You"
     if (answer.user !== "You") {
       return res.status(403).json({ message: "Not authorized" });
     }
@@ -402,7 +370,6 @@ app.put("/api/answers/:id", async (req, res) => {
   }
 });
 
-// Endpoint: Delete an Answer (only by the owner)
 app.delete("/api/answers/:id", async (req, res) => {
   try {
     const answer = await Answer.findById(req.params.id);
@@ -413,7 +380,6 @@ app.delete("/api/answers/:id", async (req, res) => {
       return res.status(403).json({ message: "Not authorized" });
     }
     await answer.deleteOne();
-    // Decrement the answer count in the corresponding question
     await Question.findByIdAndUpdate(answer.questionId, { $inc: { answers: -1 } });
     res.json({ message: "Answer deleted successfully" });
   } catch (error) {
@@ -437,7 +403,6 @@ function authenticateToken(req, res, next) {
   });
 }
 
-// Profile API Route
 app.get("/profile", authenticateToken, async (req, res) => {
   try {
     const { rollno } = req.user;
@@ -452,6 +417,134 @@ app.get("/profile", authenticateToken, async (req, res) => {
   }
 });
 
-/** ========== START SERVER ========== **/
+/** ========== NEW QUIZ MODELS & APIs ========== **/
+const Quiz = require("./models/Quiz.js");
+const QuizAttempt = require("./models/QuizAttempt.js");
+
+// Create a new Quiz
+app.post("/api/quizzes", async (req, res) => {
+  try {
+    const { title, topic, difficulty, timeLimit, points, questions } = req.body;
+    if (!title || !topic || !difficulty || timeLimit <= 0 || points <= 0 || !questions || !Array.isArray(questions) || questions.length === 0) {
+      return res.status(400).json({ message: "All quiz fields are required and must be valid" });
+    }
+    const newQuiz = new Quiz({ title, topic, difficulty, timeLimit, points, questions });
+    await newQuiz.save();
+    res.status(201).json(newQuiz);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Get all Quizzes
+app.get("/api/quizzes", async (req, res) => {
+  try {
+    const quizzes = await Quiz.find();
+    res.json(quizzes);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Get a specific Quiz by ID
+app.get("/api/quizzes/:id", async (req, res) => {
+  try {
+    const quiz = await Quiz.findById(req.params.id);
+    if (!quiz) return res.status(404).json({ message: "Quiz not found" });
+    res.json(quiz);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Delete a Quiz
+app.delete("/api/quizzes/:id", async (req, res) => {
+  try {
+    const deletedQuiz = await Quiz.findByIdAndDelete(req.params.id);
+    if (!deletedQuiz) {
+      return res.status(404).json({ message: "Quiz not found" });
+    }
+    res.json({ message: "Quiz deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Submit a Quiz Attempt
+app.post("/api/quizzes/:id/attempt", async (req, res) => {
+  try {
+    console.log("Received quiz attempt submission for quiz ID:", req.params.id);
+    const { user, answers, timeTaken } = req.body;
+    const quiz = await Quiz.findById(req.params.id);
+    if (!quiz) {
+      console.error("Quiz not found for ID:", req.params.id);
+      return res.status(404).json({ message: "Quiz not found" });
+    }
+    let totalScore = 0;
+    const processedAnswers = quiz.questions.map((q, index) => {
+      const userAnswerObj = answers.find((ans) => ans.questionId === index);
+      const userAnswer = userAnswerObj ? userAnswerObj.answer : "";
+      const isCorrect = userAnswer === q.correctAnswer;
+      const marksObtained = isCorrect ? (q.marks || 0) : 0;
+      totalScore += marksObtained;
+      return { questionId: index, answer: userAnswer, correct: isCorrect, marksObtained };
+    });
+    const newAttempt = new QuizAttempt({
+      quizId: quiz._id,
+      user,
+      answers: processedAnswers,
+      totalScore,
+      timeTaken,
+    });
+    await newAttempt.save();
+    console.log("Quiz attempt saved with total score:", totalScore);
+    res.status(201).json({ attempt: newAttempt, totalScore });
+  } catch (error) {
+    console.error("Error submitting quiz attempt:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Get quiz attempts for a user
+app.get("/api/quizAttempts", async (req, res) => {
+  try {
+    const user = req.query.user;
+    if (!user) return res.status(400).json({ message: "User required" });
+    const attempts = await QuizAttempt.find({ user }).populate("quizId");
+    res.json(attempts);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// DELETE a single quiz attempt by ID
+app.delete("/api/quizAttempts/:id", async (req, res) => {
+  try {
+    const attempt = await QuizAttempt.findByIdAndDelete(req.params.id);
+    if (!attempt) {
+      return res.status(404).json({ message: "Attempt not found" });
+    }
+    res.json({ message: "Attempt cleared successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// DELETE all quiz attempts for a given user
+app.delete("/api/quizAttempts/clearAll", async (req, res) => {
+  try {
+    console.log("Clear all attempts requested for user:", req.query.user);
+    const user = req.query.user;
+    if (!user) return res.status(400).json({ message: "User required" });
+    await QuizAttempt.deleteMany({ user });
+    console.log("All attempts cleared for user:", user);
+    res.json({ message: "All attempts cleared successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+/*START SERVER*/
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  

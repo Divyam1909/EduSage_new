@@ -28,6 +28,8 @@ export default function Register() {
   const [password, setPassword] = useState("");
   const [retypePassword, setRetypePassword] = useState("");
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
 
   const handleRegister = async () => {
     // Check if any field is empty
@@ -131,28 +133,38 @@ export default function Register() {
             {/* Branch */}
             <div className="space-y-2">
               <Label htmlFor="branch">Branch</Label>
-              <Input
+              <select
                 id="branch"
-                type="text"
-                placeholder="Your branch"
-                required
                 value={branch}
                 onChange={(e) => setBranch(e.target.value)}
-                onKeyDown={handleKeyPress}
-              />
+                required
+                className="block w-full p-2 border border-gray-300 rounded"
+              >
+                <option value="">Select your branch</option>
+                <option value="CSE">CSE</option>
+                <option value="IT">IT</option>
+                <option value="EXTC">EXTC</option>
+                <option value="Mechanical">Mechanical</option>
+                <option value="Electrical">Electrical</option>
+              </select>
             </div>
             {/* Semester */}
             <div className="space-y-2">
               <Label htmlFor="sem">Semester</Label>
-              <Input
+              <select
                 id="sem"
-                type="number"
-                placeholder="Semester"
-                required
                 value={sem}
                 onChange={(e) => setSem(e.target.value)}
-                onKeyDown={handleKeyPress}
-              />
+                required
+                className="block w-full p-2 border border-gray-300 rounded"
+              >
+                <option value="">Select your semester</option>
+                {Array.from({ length: 8 }, (_, i) => (
+                  <option key={i + 1} value={i + 1}>
+                    {i + 1}
+                  </option>
+                ))}
+              </select>
             </div>
             {/* Date of Birth */}
             <div className="space-y-2">
@@ -197,7 +209,7 @@ export default function Register() {
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
-                type="password"
+                type={showPassword ? "text" : "password"}
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -209,13 +221,28 @@ export default function Register() {
               <Label htmlFor="retypePassword">Retype Password</Label>
               <Input
                 id="retypePassword"
-                type="password"
+                type={showPassword ? "text" : "password"}
                 required
                 value={retypePassword}
                 onChange={(e) => setRetypePassword(e.target.value)}
                 onKeyDown={handleKeyPress}
               />
             </div>
+            <div className="flex items-center mt-2">
+            <Checkbox
+              id="show-password"
+              checked={showPassword}
+              onCheckedChange={(checked) => {
+                if (typeof checked === "boolean") {
+                  setShowPassword(checked);
+                }
+              }}
+            />
+            <Label htmlFor="show-password" className="ml-2 text-sm">
+              Show Password
+            </Label>
+            </div>
+
             {error && <p className="text-red-500 text-sm">{error}</p>}
             <div className="flex items-center space-x-2">
               <Checkbox id="agree" />

@@ -1,10 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
-  GraduationCap,
-  FileText,
-  Menu,
-  BookOpen,
   Users,
+  FileText,
   Calendar,
   Bot,
   Bookmark,
@@ -12,79 +9,115 @@ import {
   User,
   Clock,
   Star,
+  Check,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Link } from "react-router-dom";
 
-const quizzes = [
-  {
-    id: 1,
-    topic: "Array Arcana",
-    difficulty: "Novice",
-    marks: 30,
-    timeLimit: 20,
-    points: 50,
-  },
-  {
-    id: 2,
-    topic: "Linked List Lore",
-    difficulty: "Adept",
-    marks: 50,
-    timeLimit: 30,
-    points: 100,
-  },
-  {
-    id: 3,
-    topic: "Stack & Queue Sorcery",
-    difficulty: "Adept",
-    marks: 40,
-    timeLimit: 25,
-    points: 80,
-  },
-  {
-    id: 4,
-    topic: "Tree & Graph Thaumaturgy",
-    difficulty: "Sage",
-    marks: 80,
-    timeLimit: 45,
-    points: 160,
-  },
-  {
-    id: 5,
-    topic: "Sorting Spells",
-    difficulty: "Adept",
-    marks: 60,
-    timeLimit: 35,
-    points: 120,
-  },
-  {
-    id: 6,
-    topic: "Dynamic Programming Divination",
-    difficulty: "Sage",
-    marks: 100,
-    timeLimit: 60,
-    points: 200,
-  },
-];
+// Define interfaces for our types
+interface Question {
+  questionText: string;
+  isMCQ: boolean;
+  options: string[] | string; // During editing it may be a comma–separated string
+  correctAnswer: string;
+  marks: number;
+}
 
 interface Quiz {
-  id: number;
+  _id?: string;
+  title: string;
   topic: string;
   difficulty: string;
-  marks: number;
   timeLimit: number;
   points: number;
+  questions: Question[];
+}
+
+interface Attempt {
+  _id?: string;
+  // quizId can be either a string (if not populated) or a Quiz object
+  quizId: Quiz | string | null;
+  user: string;
+  answers: {
+    questionId: number;
+    answer: string;
+    correct: boolean;
+    marksObtained: number;
+  }[];
+  totalScore: number;
+  timeTaken: number;
+  submittedAt: string;
 }
 
 export default function QuizInterface() {
+  // Main view states
+  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [attemptingQuiz, setAttemptingQuiz] = useState<boolean>(false);
+  const [userAnswers, setUserAnswers] = useState<string[]>([]);
+  const [quizResult, setQuizResult] = useState<{ totalScore: number; timeTaken: number } | null>(null);
+  const [attemptDetails, setAttemptDetails] = useState<any[]>([]);
+  const [startTime, setStartTime] = useState<number>(0);
+  const [remainingTime, setRemainingTime] = useState<number>(0);
+
+  // Quiz creation states
+  const [createQuizMode, setCreateQuizMode] = useState<boolean>(false);
+  const [createQuizStep, setCreateQuizStep] = useState<number>(1);
+  const [newQuiz, setNewQuiz] = useState<Quiz>({
+    title: "",
+    topic: "",
+    difficulty: "",
+    timeLimit: 0,
+    points: 0,
+    questions: [],
+  });
+
+  // Attempts view states
+  const [attempts, setAttempts] = useState<Attempt[]>([]);
+  const [viewAttempts, setViewAttempts] = useState<boolean>(false);
+
+  // Fetch quizzes and attempts on mount
+  useEffect(() => {
+    fetchQuizzes();
+    fetchAttempts();
+  }, []);
+
+  const fetchQuizzes = () => {
+    fetch("http://localhost:5000/api/quizzes")
+      .then((res) => res.json())
+      .then((data: Quiz[]) => setQuizzes(data))
+      .catch((err) => console.error("Error fetching quizzes:", err));
+  };
+
+  const fetchAttempts = () => {
+    fetch("http://localhost:5000/api/quizAttempts?user=StudentUser")
+      .then((res) => res.json())
+      .then((data) => setAttempts(data))
+      .catch((err) => console.error("Error fetching attempts:", err));
+  };
+
+  // Timer effect: when attemptingQuiz becomes true, start countdown
+  useEffect(() => {
+    let timer: any;
+    if (attemptingQuiz && selectedQuiz) {
+      setRemainingTime(selectedQuiz.timeLimit * 60);
+      timer = setInterval(() => {
+        setRemainingTime((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            submitQuizAttempt();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [attemptingQuiz, selectedQuiz]);
 
   const getDifficultyColor = (difficulty: string | undefined) => {
     if (!difficulty) return "text-purple-300";
-
     switch (difficulty.toLowerCase()) {
       case "novice":
         return "text-green-400";
@@ -97,12 +130,584 @@ export default function QuizInterface() {
     }
   };
 
+  // When a quiz is selected from the list
+  const handleSelectQuiz = (quiz: Quiz) => {
+    // Prevent reattempt if already attempted by StudentUser
+    const attempted = attempts.find((a) => {
+      const attemptedQuizId = (a.quizId && typeof a.quizId === "object" ? a.quizId._id : a.quizId) || "";
+      return attemptedQuizId.toString() === quiz._id?.toString();
+    });
+    if (attempted) {
+      alert("You have already attempted this quiz.");
+      return;
+    }
+    setSelectedQuiz(quiz);
+    setAttemptingQuiz(false);
+    setQuizResult(null);
+    setUserAnswers(Array(quiz.questions.length).fill(""));
+  };
+
+  const startQuizAttempt = () => {
+    if (!selectedQuiz) return;
+    setAttemptingQuiz(true);
+    setStartTime(Date.now());
+  };
+
+  const handleAnswerChange = (index: number, answer: string) => {
+    const newAns = [...userAnswers];
+    newAns[index] = answer;
+    setUserAnswers(newAns);
+  };
+
+  const submitQuizAttempt = () => {
+    if (!selectedQuiz) return;
+    const timeTaken = Math.floor((Date.now() - startTime) / 1000);
+    const answersPayload = userAnswers.map((answer, index) => ({ questionId: index, answer }));
+    fetch(`http://localhost:5000/api/quizzes/${selectedQuiz._id}/attempt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user: "StudentUser", answers: answersPayload, timeTaken }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        setQuizResult({ totalScore: data.totalScore, timeTaken });
+        setAttemptDetails(data.attempt.answers);
+        fetchAttempts();
+      })
+      .catch((err) => console.error("Error submitting quiz attempt:", err));
+  };
+
+  const handleNewQuizDetailChange = (field: keyof Omit<Quiz, "questions" | "_id">, value: any) => {
+    setNewQuiz({ ...newQuiz, [field]: value });
+  };
+
+  const handleQuestionChange = (index: number, field: keyof Question, value: any) => {
+    const updatedQuestions = [...newQuiz.questions];
+    updatedQuestions[index] = { ...updatedQuestions[index], [field]: value };
+    setNewQuiz({ ...newQuiz, questions: updatedQuestions });
+  };
+
+  const addNewQuestion = () => {
+    setNewQuiz({
+      ...newQuiz,
+      questions: [
+        ...newQuiz.questions,
+        { questionText: "", isMCQ: true, options: "", correctAnswer: "", marks: 0 },
+      ],
+    });
+  };
+
+  const removeQuestion = (index: number) => {
+    const updatedQuestions = newQuiz.questions.filter((_, i) => i !== index);
+    setNewQuiz({ ...newQuiz, questions: updatedQuestions });
+  };
+
+  const handleSubmitNewQuiz = () => {
+    // For each question, if it is MCQ then split the options string; else use an empty array.
+    const processedQuestions = newQuiz.questions.map((q) => ({
+      questionText: q.questionText,
+      isMCQ: q.isMCQ,
+      options: q.isMCQ
+        ? (typeof q.options === "string" ? q.options.split(",").map((opt) => opt.trim()) : q.options)
+        : [],
+      correctAnswer: q.correctAnswer,
+      marks: Number(q.marks),
+    }));
+    const quizToSubmit = { ...newQuiz, questions: processedQuestions };
+    fetch("http://localhost:5000/api/quizzes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(quizToSubmit),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        // Re–fetch quizzes so the new one is persisted
+        fetchQuizzes();
+        setCreateQuizMode(false);
+        setCreateQuizStep(1);
+        setNewQuiz({ title: "", topic: "", difficulty: "", timeLimit: 0, points: 0, questions: [] });
+      })
+      .catch((err) => console.error("Error creating quiz:", err));
+  };
+
+  // Delete a quiz with confirmation
+  const deleteQuiz = (quizId: string) => {
+    if (window.confirm("Are you sure you want to delete this quiz?")) {
+      fetch(`http://localhost:5000/api/quizzes/${quizId}`, {
+        method: "DELETE",
+      })
+        .then((res) => res.json())
+        .then(() => {
+          setQuizzes(quizzes.filter((q) => q._id !== quizId));
+        })
+        .catch((err) => console.error("Error deleting quiz:", err));
+    }
+  };
+
+  // Clear a single quiz attempt
+  const clearAttempt = (attemptId?: string) => {
+    if (!attemptId) return;
+    if (window.confirm("Are you sure you want to clear this attempt?")) {
+      fetch(`http://localhost:5000/api/quizAttempts/${attemptId}`, {
+        method: "DELETE",
+      })
+        .then((res) => res.json())
+        .then(() => {
+          fetchAttempts();
+        })
+        .catch((err) => console.error("Error clearing attempt:", err));
+    }
+  };
+
+  // Render functions for different views
+
+  const renderQuizList = () => (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-4xl font-bold text-purple-900">Available Quizzes</h2>
+        <div className="space-x-4">
+          <Button
+            className="bg-purple-600 text-white hover:bg-purple-700"
+            onClick={() => {
+              setCreateQuizMode(true);
+              setCreateQuizStep(1);
+            }}
+          >
+            Add Quiz
+          </Button>
+          <Button
+            className="bg-blue-600 text-white hover:bg-blue-700"
+            onClick={() => setViewAttempts(true)}
+          >
+            My Attempts
+          </Button>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {quizzes.map((quiz) => {
+          const attempted = attempts.find((a) => {
+            const attemptedQuizId = (a.quizId && typeof a.quizId === "object" ? a.quizId._id : a.quizId) || "";
+            return attemptedQuizId.toString() === quiz._id?.toString();
+          });
+          return (
+            <div
+              key={quiz._id}
+              className="bg-white border-2 border-purple-200 p-4 rounded hover:shadow-lg transition-shadow duration-300"
+            >
+              <h3 className="text-purple-800 text-xl mb-2">{quiz.topic}</h3>
+              <p className={`font-semibold ${getDifficultyColor(quiz.difficulty)}`}>
+                Mastery Level: {quiz.difficulty}
+              </p>
+              <div className="mt-2 flex items-center">
+                <Star className="h-5 w-5 text-purple-400 mr-1" />
+                <span className="text-purple-700">{quiz.points} wisdom points</span>
+              </div>
+              <div className="mt-2 flex items-center">
+                <Clock className="h-5 w-5 text-purple-400 mr-1" />
+                <span className="text-purple-700">{quiz.timeLimit} minutes incantation</span>
+              </div>
+              <div className="mt-4 flex justify-between">
+                <Button
+                  className="bg-purple-600 text-white hover:bg-purple-700 flex-1 mr-2"
+                  onClick={() => handleSelectQuiz(quiz)}
+                  disabled={!!attempted}
+                >
+                  {attempted ? "Attempted" : "Commence Trial"}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
+                  onClick={() => deleteQuiz(quiz._id!)}
+                >
+                  Delete
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const renderQuizDetails = () => (
+    <div className="bg-purple-50 p-8 min-h-screen">
+      <h2 className="text-4xl font-bold text-purple-900 mb-4">{selectedQuiz?.topic}</h2>
+      <p className="text-purple-700 mb-2">
+        <strong>Mastery Level:</strong>{" "}
+        <span className={getDifficultyColor(selectedQuiz?.difficulty)}>
+          {selectedQuiz?.difficulty}
+        </span>
+      </p>
+      <p className="text-purple-700 mb-2">
+        <strong>Points for Completion:</strong> {selectedQuiz?.points}
+      </p>
+      <p className="text-purple-700 mb-2">
+        <strong>Total Questions:</strong> {selectedQuiz?.questions.length}
+      </p>
+      <p className="text-purple-700 mb-4">
+        <strong>Time Limit:</strong> {selectedQuiz?.timeLimit} minutes
+      </p>
+      <div className="flex space-x-4">
+        <Button variant="ghost" onClick={() => setSelectedQuiz(null)}>
+          Back
+        </Button>
+        <Button
+          className="bg-purple-600 text-white hover:bg-purple-700"
+          onClick={startQuizAttempt}
+        >
+          Begin Quiz
+        </Button>
+      </div>
+    </div>
+  );
+
+  const renderQuizAttempt = () => (
+    <div className="bg-purple-50 p-8 min-h-screen">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-3xl font-bold text-purple-800">
+          {selectedQuiz?.topic} - Quiz
+        </h2>
+        <div className="text-xl font-medium text-purple-700">
+          Time Left: {Math.floor(remainingTime / 60)}:
+          {("0" + (remainingTime % 60)).slice(-2)}
+        </div>
+      </div>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          submitQuizAttempt();
+        }}
+      >
+        <div className="space-y-6">
+          {selectedQuiz?.questions.map((q, index) => (
+            <div key={index} className="bg-white p-4 rounded shadow mb-4">
+              <p className="font-semibold mb-2">
+                {index + 1}. {q.questionText}
+              </p>
+              <div className="space-y-2">
+                {q.isMCQ &&
+                q.options &&
+                (Array.isArray(q.options)
+                  ? q.options.length > 0
+                  : typeof q.options === "string" && q.options.trim() !== "") ? (
+                  (typeof q.options === "string"
+                    ? q.options.split(",").map((opt) => opt.trim())
+                    : q.options
+                  ).map((option, optIndex) => (
+                    <label key={optIndex} className="flex items-center space-x-2">
+                      <input
+                        type="radio"
+                        name={`question-${index}`}
+                        value={option}
+                        checked={userAnswers[index] === option}
+                        onChange={() => handleAnswerChange(index, option)}
+                      />
+                      <span>{option}</span>
+                    </label>
+                  ))
+                ) : (
+                  <input
+                    type="text"
+                    placeholder="Your Answer"
+                    value={userAnswers[index]}
+                    onChange={(e) => handleAnswerChange(index, e.target.value)}
+                    className="w-full p-2 border rounded"
+                  />
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="flex space-x-4 mt-6">
+          <Button variant="ghost" onClick={() => { setAttemptingQuiz(false); setSelectedQuiz(null); }}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={submitQuizAttempt}
+            className="bg-purple-600 text-white hover:bg-purple-700"
+          >
+            Submit Answers
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
+
+  const renderQuizResult = () => (
+    <div className="bg-purple-50 p-8 min-h-screen">
+      <h2 className="text-3xl font-bold text-purple-800 mb-4">Quiz Completed</h2>
+      <p className="text-purple-700 mb-2">
+        <strong>Total Score:</strong> {quizResult?.totalScore}
+      </p>
+      <p className="text-purple-700 mb-4">
+        <strong>Time Taken:</strong> {quizResult?.timeTaken} seconds
+      </p>
+      <div className="space-y-4">
+        {selectedQuiz?.questions.map((q, index) => {
+          const userAns = userAnswers[index];
+          const isCorrect = attemptDetails.find((a) => a.questionId === index)?.correct;
+          return (
+            <div key={index} className="flex items-center">
+              <div className="w-10">
+                {isCorrect ? <Check className="text-green-500" /> : <X className="text-red-500" />}
+              </div>
+              <div>
+                <p className="font-semibold">
+                  {index + 1}. {q.questionText}
+                </p>
+                <p>Your Answer: {userAns}</p>
+                <p>Correct Answer: {q.correctAnswer}</p>
+                <p>
+                  Marks: {isCorrect ? q.marks : 0} / {q.marks}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-6">
+        <Button
+          className="bg-purple-600 text-white hover:bg-purple-700"
+          onClick={() => {
+            setQuizResult(null);
+            setSelectedQuiz(null);
+          }}
+        >
+          Close
+        </Button>
+      </div>
+    </div>
+  );
+
+  const renderCreateQuiz = () => (
+    <div className="bg-purple-50 p-8 min-h-screen">
+      <h2 className="text-3xl font-bold text-purple-800 mb-4">Create New Quiz</h2>
+      {createQuizStep === 1 ? (
+        <div className="space-y-4">
+          <label className="block font-medium mb-1">Quiz Title:</label>
+          <input
+            type="text"
+            placeholder="Quiz Title"
+            value={newQuiz.title}
+            onChange={(e) => handleNewQuizDetailChange("title", e.target.value)}
+            className="w-full p-2 border rounded"
+          />
+          <label className="block font-medium mb-1">Topic:</label>
+          <input
+            type="text"
+            placeholder="Topic"
+            value={newQuiz.topic}
+            onChange={(e) => handleNewQuizDetailChange("topic", e.target.value)}
+            className="w-full p-2 border rounded"
+          />
+          <label className="block font-medium mb-1">Difficulty Level:</label>
+          <select
+            value={newQuiz.difficulty}
+            onChange={(e) => handleNewQuizDetailChange("difficulty", e.target.value)}
+            className="w-full p-2 border rounded"
+          >
+            <option value="">Select Difficulty</option>
+            <option value="novice">Novice</option>
+            <option value="adept">Adept</option>
+            <option value="sage">Sage</option>
+          </select>
+          <label className="block font-medium mb-1">Time Limit (minutes):</label>
+          <input
+            type="number"
+            placeholder="Time Limit (minutes)"
+            value={newQuiz.timeLimit}
+            onChange={(e) => handleNewQuizDetailChange("timeLimit", Number(e.target.value))}
+            className="w-full p-2 border rounded"
+          />
+          <label className="block font-medium mb-1">Points for Completion:</label>
+          <input
+            type="number"
+            placeholder="Points for Completion"
+            value={newQuiz.points}
+            onChange={(e) => handleNewQuizDetailChange("points", Number(e.target.value))}
+            className="w-full p-2 border rounded"
+          />
+          <div className="flex justify-end">
+            <Button className="bg-purple-600 text-white hover:bg-purple-700" onClick={() => setCreateQuizStep(2)}>
+              Next
+            </Button>
+          </div>
+          <div className="flex justify-start mt-4">
+            <Button variant="ghost" onClick={() => setCreateQuizMode(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <p className="font-bold">Questions (provide details for each):</p>
+          {newQuiz.questions.map((q, index) => (
+            <div key={index} className="border p-4 rounded mb-4">
+              <div className="flex justify-between items-center mb-2">
+                <span className="font-semibold">Question {index + 1}</span>
+                <Button variant="ghost" onClick={() => removeQuestion(index)}>
+                  Remove
+                </Button>
+              </div>
+              <label className="block font-medium mb-1">Question Text:</label>
+              <input
+                type="text"
+                placeholder="Question Text"
+                value={q.questionText}
+                onChange={(e) => handleQuestionChange(index, "questionText", e.target.value)}
+                className="w-full p-2 border rounded mb-2"
+              />
+              <label className="block font-medium mb-1">Question Type:</label>
+              <div className="flex items-center space-x-4 mb-2">
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name={`qtype-${index}`}
+                    checked={q.isMCQ === true}
+                    onChange={() => handleQuestionChange(index, "isMCQ", true)}
+                  />
+                  <span className="ml-1">Multiple Choice</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name={`qtype-${index}`}
+                    checked={q.isMCQ === false}
+                    onChange={() => handleQuestionChange(index, "isMCQ", false)}
+                  />
+                  <span className="ml-1">Text Answer</span>
+                </label>
+              </div>
+              {q.isMCQ && (
+                <>
+                  <label className="block font-medium mb-1">Options (comma separated):</label>
+                  <input
+                    type="text"
+                    placeholder="Options (comma separated)"
+                    value={typeof q.options === "string" ? q.options : (q.options as string[]).join(", ")}
+                    onChange={(e) => handleQuestionChange(index, "options", e.target.value)}
+                    className="w-full p-2 border rounded mb-2"
+                  />
+                </>
+              )}
+              <label className="block font-medium mb-1">Correct Answer:</label>
+              <input
+                type="text"
+                placeholder="Correct Answer"
+                value={q.correctAnswer}
+                onChange={(e) => handleQuestionChange(index, "correctAnswer", e.target.value)}
+                className="w-full p-2 border rounded mb-2"
+              />
+              <label className="block font-medium mb-1">Marks:</label>
+              <input
+                type="number"
+                placeholder="Marks"
+                value={q.marks}
+                onChange={(e) => handleQuestionChange(index, "marks", Number(e.target.value))}
+                className="w-full p-2 border rounded"
+              />
+            </div>
+          ))}
+          <Button variant="outline" onClick={addNewQuestion}>
+            Add Another Question
+          </Button>
+          <div className="flex justify-between mt-4">
+            <Button variant="ghost" onClick={() => setCreateQuizStep(1)}>
+              Back
+            </Button>
+            <Button
+              className="bg-purple-600 text-white hover:bg-purple-700"
+              onClick={handleSubmitNewQuiz}
+            >
+              Submit Quiz
+            </Button>
+          </div>
+          <div className="flex justify-start mt-4">
+            <Button variant="ghost" onClick={() => setCreateQuizMode(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderAttemptsView = () => (
+    <div className="bg-purple-50 p-8 min-h-screen">
+      <div className="flex justify-between items-center mb-6">
+        <div className="flex items-center space-x-4">
+          <h2 className="text-4xl font-bold text-purple-900">My Quiz Attempts</h2>
+          <Button
+            variant="outline"
+            className="text-red-500 border-red-500 hover:bg-red-500 hover:text-white"
+            onClick={() => {
+              if (window.confirm("Are you sure you want to clear all attempts?")) {
+                fetch("http://localhost:5000/api/QuizAttempts/clearAll?user=StudentUser", { method: "DELETE" })
+                  .then((res) => res.json())
+                  .then(() => fetchAttempts())
+                  .catch((err) => console.error("Error clearing all attempts:", err));
+              }
+            }}
+          >
+            Clear All History
+          </Button>
+        </div>
+        <Button
+          className="bg-gray-600 text-white hover:bg-gray-700"
+          onClick={() => setViewAttempts(false)}
+        >
+          Back
+        </Button>
+      </div>
+      {attempts.length === 0 ? (
+        <p className="text-purple-700">No quiz attempts found.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full border">
+            <thead>
+              <tr className="bg-purple-200">
+                <th className="px-4 py-2 border">Quiz Topic</th>
+                <th className="px-4 py-2 border">Score</th>
+                <th className="px-4 py-2 border">Time Taken (s)</th>
+                <th className="px-4 py-2 border">Attempted At</th>
+                <th className="px-4 py-2 border">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {attempts.map((attempt, idx) => (
+                <tr key={idx} className="text-center">
+                  <td className="px-4 py-2 border">
+                    {attempt.quizId && typeof attempt.quizId === "object" ? attempt.quizId.topic : "N/A"}
+                  </td>
+                  <td className="px-4 py-2 border">{attempt.totalScore}</td>
+                  <td className="px-4 py-2 border">{attempt.timeTaken}</td>
+                  <td className="px-4 py-2 border">
+                    {new Date(attempt.submittedAt).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2 border">
+                    <Button
+                      variant="outline"
+                      className="text-red-500 border-red-500 hover:bg-red-500 hover:text-white"
+                      onClick={() => clearAttempt(attempt._id)}
+                    >
+                      Clear
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="flex min-h-screen bg-purple-50">
-      {/* Left Side Menu */}
       <aside className="w-64 bg-purple-800 text-white p-4">
         <div className="flex items-center mb-8">
-        <img src="/ES_logo2.png" alt="Your Logo" className="w-20 h-20 mr-2" />
+          <img src="/ES_logo2.png" alt="Your Logo" className="w-20 h-20 mr-2" />
           <h1 className="text-2xl font-bold">EduSage</h1>
         </div>
         <nav>
@@ -110,151 +715,69 @@ export default function QuizInterface() {
             <li>
               <Link to="/home">
                 <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
-                  <Users className="mr-2 h-4 w-4" />
-                  Discussion Forum
+                  <Users className="mr-2 h-4 w-4" /> Discussion Forum
                 </Button>
               </Link>
             </li>
             <li>
               <Link to="/Resources">
                 <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
-                  <FileText className="mr-2 h-4 w-4" />
-                  Resources
+                  <FileText className="mr-2 h-4 w-4" /> Resources
                 </Button>
               </Link>
             </li>
             <li>
               <Link to="/quiz">
                 <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
-                  <QuizIcon className="mr-2 h-4 w-4" />
-                  Quizzes
+                  <QuizIcon className="mr-2 h-4 w-4" /> Quizzes
                 </Button>
               </Link>
             </li>
             <li>
               <Link to="/profile">
                 <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
-                  <User className="mr-2 h-4 w-4" />
-                  Profile
+                  <User className="mr-2 h-4 w-4" /> Profile
                 </Button>
               </Link>
             </li>
             <li>
-            <Link to="/bookmark">
-              <Button
-                variant="ghost"
-                className="w-full justify-start hover:bg-white hover:text-black transition-colors"
-              >
-                <Bookmark className="mr-2 h-4 w-4" />
-                Bookmarks
-              </Button>
+              <Link to="/bookmark">
+                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
+                  <Bookmark className="mr-2 h-4 w-4" /> Bookmarks
+                </Button>
               </Link>
             </li>
             <li>
               <Link to="/calendar">
                 <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
-                  <Calendar className="mr-2 h-4 w-4" />
-                  Calendar
+                  <Calendar className="mr-2 h-4 w-4" /> Calendar
                 </Button>
               </Link>
             </li>
             <li>
               <Link to="/ai">
                 <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
-                  <Bot className="mr-2 h-4 w-4" />
-                  AI Assistant
+                  <Bot className="mr-2 h-4 w-4" /> AI Assistant
                 </Button>
               </Link>
             </li>
           </ul>
         </nav>
       </aside>
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col">
-        {/* <header className="bg-purple-700 shadow-sm">
-          <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex items-center justify-between">
-            <div className="flex items-center">
-              <GraduationCap className="h-10 w-10 text-purple-200" />
-              <h1 className="ml-2 text-3xl font-bold text-white">EduSage</h1>
-            </div>
-            <Button variant="ghost" className="text-white md:hidden" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-              <Menu className="h-6 w-6" />
-            </Button>
-          </div>
-        </header> */}
-
-        {mobileMenuOpen && (
-          <nav className="bg-purple-700 text-white p-4 md:hidden">
-            <a href="#" className="block py-2">
-              Home
-            </a>
-            <a href="#" className="block py-2">
-              Profile
-            </a>
-            <a href="#" className="block py-2">
-              About Us
-            </a>
-          </nav>
-        )}
-
+      <div className="flex-1">
         <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-          <h2 className="text-4xl font-bold text-purple-900 mb-6">Arcane DSA Trials</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {quizzes.map((quiz) => (
-              <Card key={quiz.id} className="hover:shadow-lg transition-shadow duration-300 bg-white border-2 border-purple-200">
-                <CardHeader className="bg-purple-100">
-                  <CardTitle className="text-purple-800 text-xl">{quiz.topic}</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-4">
-                  <p className={`font-semibold ${getDifficultyColor(quiz.difficulty)}`}>Mastery Level: {quiz.difficulty}</p>
-                  <div className="mt-2 flex items-center">
-                    <Star className="h-5 w-5 text-purple-400 mr-1" />
-                    <span className="text-purple-700">{quiz.marks} wisdom points</span>
-                  </div>
-                  <div className="mt-2 flex items-center">
-                    <Clock className="h-5 w-5 text-purple-400 mr-1" />
-                    <span className="text-purple-700">{quiz.timeLimit} minutes incantation</span>
-                  </div>
-                </CardContent>
-                <CardFooter>
-                  <Button onClick={() => setSelectedQuiz(quiz)} className="w-full bg-purple-600 hover:bg-purple-700 text-white">
-                    Commence Trial
-                  </Button>
-                </CardFooter>
-              </Card>
-            ))}
-          </div>
+          {viewAttempts
+            ? renderAttemptsView()
+            : createQuizMode
+            ? renderCreateQuiz()
+            : selectedQuiz
+            ? attemptingQuiz
+              ? renderQuizAttempt()
+              : quizResult
+              ? renderQuizResult()
+              : renderQuizDetails()
+            : renderQuizList()}
         </main>
-
-        <Dialog open={selectedQuiz !== null} onOpenChange={() => setSelectedQuiz(null)}>
-          <DialogContent className="bg-purple-50 border-2 border-purple-300">
-            <DialogHeader>
-              <DialogTitle className="text-purple-800 text-2xl">{selectedQuiz?.topic}</DialogTitle>
-              <DialogDescription className="text-purple-600">
-                Are you prepared to embark on this mystical journey? You have {selectedQuiz?.timeLimit} minutes to unravel the enigma.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="mt-4 text-purple-700">
-              <p>
-                <strong>Mastery Level:</strong>{" "}
-                <span className={getDifficultyColor(selectedQuiz?.difficulty)}>{selectedQuiz?.difficulty}</span>
-              </p>
-              <p>
-                <strong>Wisdom Points:</strong> {selectedQuiz?.marks}
-              </p>
-              <p>
-                <strong>Points for Completion:</strong> {selectedQuiz?.points}
-              </p>
-            </div>
-            <DialogFooter>
-              <Button variant="ghost" onClick={() => setSelectedQuiz(null)}>
-                Cancel
-              </Button>
-              <Button className="bg-purple-600 text-white hover:bg-purple-700">Begin Trial</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
     </div>
   );
