@@ -19,7 +19,7 @@ import { Link } from "react-router-dom";
 interface Question {
   questionText: string;
   isMCQ: boolean;
-  options: string[] | string; // During editing it may be a comma–separated string
+  options: string[] | string; // during editing it may be a comma–separated string
   correctAnswer: string;
   marks: number;
 }
@@ -31,6 +31,7 @@ interface Quiz {
   difficulty: string;
   timeLimit: number;
   points: number;
+  clearable: boolean; // new property to control whether attempts can be cleared
   questions: Question[];
 }
 
@@ -48,6 +49,7 @@ interface Attempt {
   totalScore: number;
   timeTaken: number;
   submittedAt: string;
+  clearable: boolean; // indicates if this attempt can be cleared
 }
 
 export default function QuizInterface() {
@@ -70,6 +72,7 @@ export default function QuizInterface() {
     difficulty: "",
     timeLimit: 0,
     points: 0,
+    clearable: true, // default is clearable
     questions: [],
   });
 
@@ -162,7 +165,8 @@ export default function QuizInterface() {
   const submitQuizAttempt = () => {
     if (!selectedQuiz) return;
     const timeTaken = Math.floor((Date.now() - startTime) / 1000);
-    const answersPayload = userAnswers.map((answer, index) => ({ questionId: index, answer }));
+    const answersPayload = userAnswers.map((answer, index) => ({ questionId: index, answer: answer.trim() }));
+  
     fetch(`http://localhost:5000/api/quizzes/${selectedQuiz._id}/attempt`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -172,6 +176,7 @@ export default function QuizInterface() {
       .then((data) => {
         setQuizResult({ totalScore: data.totalScore, timeTaken });
         setAttemptDetails(data.attempt.answers);
+        setAttemptingQuiz(false);
         fetchAttempts();
       })
       .catch((err) => console.error("Error submitting quiz attempt:", err));
@@ -203,7 +208,7 @@ export default function QuizInterface() {
   };
 
   const handleSubmitNewQuiz = () => {
-    // For each question, if it is MCQ then split the options string; else use an empty array.
+    // Process questions: split options string if MCQ
     const processedQuestions = newQuiz.questions.map((q) => ({
       questionText: q.questionText,
       isMCQ: q.isMCQ,
@@ -221,11 +226,12 @@ export default function QuizInterface() {
     })
       .then((res) => res.json())
       .then((data) => {
-        // Re–fetch quizzes so the new one is persisted
+        alert("Quiz created successfully!");
+        // Re–fetch quizzes so the new one is visible
         fetchQuizzes();
         setCreateQuizMode(false);
         setCreateQuizStep(1);
-        setNewQuiz({ title: "", topic: "", difficulty: "", timeLimit: 0, points: 0, questions: [] });
+        setNewQuiz({ title: "", topic: "", difficulty: "", timeLimit: 0, points: 0, clearable: true, questions: [] });
       })
       .catch((err) => console.error("Error creating quiz:", err));
   };
@@ -245,8 +251,12 @@ export default function QuizInterface() {
   };
 
   // Clear a single quiz attempt
-  const clearAttempt = (attemptId?: string) => {
+  const clearAttempt = (attemptId?: string, clearable?: boolean) => {
     if (!attemptId) return;
+    if (!clearable) {
+      alert("This attempt cannot be cleared.");
+      return;
+    }
     if (window.confirm("Are you sure you want to clear this attempt?")) {
       fetch(`http://localhost:5000/api/quizAttempts/${attemptId}`, {
         method: "DELETE",
@@ -294,7 +304,8 @@ export default function QuizInterface() {
               key={quiz._id}
               className="bg-white border-2 border-purple-200 p-4 rounded hover:shadow-lg transition-shadow duration-300"
             >
-              <h3 className="text-purple-800 text-xl mb-2">{quiz.topic}</h3>
+              <h3 className="text-purple-800 text-xl mb-1">{quiz.title}</h3>
+              <p className="text-sm text-gray-600 mb-2">Topic: {quiz.topic}</p>
               <p className={`font-semibold ${getDifficultyColor(quiz.difficulty)}`}>
                 Mastery Level: {quiz.difficulty}
               </p>
@@ -331,7 +342,10 @@ export default function QuizInterface() {
 
   const renderQuizDetails = () => (
     <div className="bg-purple-50 p-8 min-h-screen">
-      <h2 className="text-4xl font-bold text-purple-900 mb-4">{selectedQuiz?.topic}</h2>
+      <h2 className="text-4xl font-bold text-purple-900 mb-4">{selectedQuiz?.title}</h2>
+      <p className="text-purple-700 mb-2">
+        <strong>Topic:</strong> {selectedQuiz?.topic}
+      </p>
       <p className="text-purple-700 mb-2">
         <strong>Mastery Level:</strong>{" "}
         <span className={getDifficultyColor(selectedQuiz?.difficulty)}>
@@ -365,7 +379,7 @@ export default function QuizInterface() {
     <div className="bg-purple-50 p-8 min-h-screen">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-3xl font-bold text-purple-800">
-          {selectedQuiz?.topic} - Quiz
+          {selectedQuiz?.title} - Quiz
         </h2>
         <div className="text-xl font-medium text-purple-700">
           Time Left: {Math.floor(remainingTime / 60)}:
@@ -528,6 +542,13 @@ export default function QuizInterface() {
             onChange={(e) => handleNewQuizDetailChange("points", Number(e.target.value))}
             className="w-full p-2 border rounded"
           />
+          <label className="block font-medium mb-1">Allow clearing attempts:</label>
+          <input
+            type="checkbox"
+            checked={newQuiz.clearable}
+            onChange={(e) => handleNewQuizDetailChange("clearable", e.target.checked)}
+            className="mb-4"
+          />
           <div className="flex justify-end">
             <Button className="bg-purple-600 text-white hover:bg-purple-700" onClick={() => setCreateQuizStep(2)}>
               Next
@@ -643,9 +664,12 @@ export default function QuizInterface() {
             className="text-red-500 border-red-500 hover:bg-red-500 hover:text-white"
             onClick={() => {
               if (window.confirm("Are you sure you want to clear all attempts?")) {
-                fetch("http://localhost:5000/api/QuizAttempts/clearAll?user=StudentUser", { method: "DELETE" })
+                fetch("http://localhost:5000/api/quizAttempts/clearAll?user=StudentUser", { method: "DELETE" })
                   .then((res) => res.json())
-                  .then(() => fetchAttempts())
+                  .then(() => {
+                    alert("All clearable attempts cleared successfully!");
+                    fetchAttempts();
+                  })
                   .catch((err) => console.error("Error clearing all attempts:", err));
               }
             }}
@@ -666,8 +690,8 @@ export default function QuizInterface() {
         <div className="overflow-x-auto">
           <table className="min-w-full border">
             <thead>
-              <tr className="bg-purple-200">
-                <th className="px-4 py-2 border">Quiz Topic</th>
+              <tr className="bg-purple-200 text-center">
+                <th className="px-4 py-2 border">Quiz Title</th>
                 <th className="px-4 py-2 border">Score</th>
                 <th className="px-4 py-2 border">Time Taken (s)</th>
                 <th className="px-4 py-2 border">Attempted At</th>
@@ -678,7 +702,7 @@ export default function QuizInterface() {
               {attempts.map((attempt, idx) => (
                 <tr key={idx} className="text-center">
                   <td className="px-4 py-2 border">
-                    {attempt.quizId && typeof attempt.quizId === "object" ? attempt.quizId.topic : "N/A"}
+                    {attempt.quizId && typeof attempt.quizId === "object" ? attempt.quizId.title : "N/A"}
                   </td>
                   <td className="px-4 py-2 border">{attempt.totalScore}</td>
                   <td className="px-4 py-2 border">{attempt.timeTaken}</td>
@@ -689,7 +713,8 @@ export default function QuizInterface() {
                     <Button
                       variant="outline"
                       className="text-red-500 border-red-500 hover:bg-red-500 hover:text-white"
-                      onClick={() => clearAttempt(attempt._id)}
+                      onClick={() => clearAttempt(attempt._id, attempt.clearable)}
+                      disabled={!attempt.clearable}
                     >
                       Clear
                     </Button>

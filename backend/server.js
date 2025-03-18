@@ -418,17 +418,18 @@ app.get("/profile", authenticateToken, async (req, res) => {
 });
 
 /** ========== NEW QUIZ MODELS & APIs ========== **/
+// Note: Ensure that Quiz.js and QuizAttempt.js are in a folder named “models”
 const Quiz = require("./models/Quiz.js");
 const QuizAttempt = require("./models/QuizAttempt.js");
 
 // Create a new Quiz
 app.post("/api/quizzes", async (req, res) => {
   try {
-    const { title, topic, difficulty, timeLimit, points, questions } = req.body;
+    const { title, topic, difficulty, timeLimit, points, questions, clearable } = req.body;
     if (!title || !topic || !difficulty || timeLimit <= 0 || points <= 0 || !questions || !Array.isArray(questions) || questions.length === 0) {
       return res.status(400).json({ message: "All quiz fields are required and must be valid" });
     }
-    const newQuiz = new Quiz({ title, topic, difficulty, timeLimit, points, questions });
+    const newQuiz = new Quiz({ title, topic, difficulty, timeLimit, points, questions, clearable });
     await newQuiz.save();
     res.status(201).json(newQuiz);
   } catch (error) {
@@ -484,7 +485,7 @@ app.post("/api/quizzes/:id/attempt", async (req, res) => {
     const processedAnswers = quiz.questions.map((q, index) => {
       const userAnswerObj = answers.find((ans) => ans.questionId === index);
       const userAnswer = userAnswerObj ? userAnswerObj.answer : "";
-      const isCorrect = userAnswer === q.correctAnswer;
+      const isCorrect = userAnswer.trim().toLowerCase() === q.correctAnswer.trim().toLowerCase();
       const marksObtained = isCorrect ? (q.marks || 0) : 0;
       totalScore += marksObtained;
       return { questionId: index, answer: userAnswer, correct: isCorrect, marksObtained };
@@ -495,6 +496,7 @@ app.post("/api/quizzes/:id/attempt", async (req, res) => {
       answers: processedAnswers,
       totalScore,
       timeTaken,
+      clearable: quiz.clearable, // Copy the flag from the quiz
     });
     await newAttempt.save();
     console.log("Quiz attempt saved with total score:", totalScore);
@@ -517,6 +519,21 @@ app.get("/api/quizAttempts", async (req, res) => {
   }
 });
 
+// DELETE all quiz attempts for a given user (only clearable attempts)
+// NOTE: Defined BEFORE the dynamic deletion endpoint
+app.delete("/api/quizAttempts/clearAll", async (req, res) => {
+  try {
+    console.log("Clear all attempts requested for user:", req.query.user);
+    const user = req.query.user;
+    if (!user) return res.status(400).json({ message: "User required" });
+    await QuizAttempt.deleteMany({ user, clearable: true });
+    console.log("All clearable attempts cleared for user:", user);
+    res.json({ message: "All clearable attempts cleared successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 // DELETE a single quiz attempt by ID
 app.delete("/api/quizAttempts/:id", async (req, res) => {
   try {
@@ -530,21 +547,6 @@ app.delete("/api/quizAttempts/:id", async (req, res) => {
   }
 });
 
-// DELETE all quiz attempts for a given user
-app.delete("/api/quizAttempts/clearAll", async (req, res) => {
-  try {
-    console.log("Clear all attempts requested for user:", req.query.user);
-    const user = req.query.user;
-    if (!user) return res.status(400).json({ message: "User required" });
-    await QuizAttempt.deleteMany({ user });
-    console.log("All attempts cleared for user:", user);
-    res.json({ message: "All attempts cleared successfully" });
-  } catch (error) {
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-/*START SERVER*/
+/* START SERVER */
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-  
