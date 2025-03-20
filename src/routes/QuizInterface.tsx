@@ -94,6 +94,7 @@ export default function QuizInterface() {
   };
 
   const fetchAttempts = () => {
+    // Replace "StudentUser" with the actual user identifier if available
     fetch("http://localhost:5000/api/quizAttempts?user=StudentUser")
       .then((res) => res.json())
       .then((data) => setAttempts(data))
@@ -137,7 +138,8 @@ export default function QuizInterface() {
   const handleSelectQuiz = (quiz: Quiz) => {
     // Prevent reattempt if already attempted by StudentUser
     const attempted = attempts.find((a) => {
-      const attemptedQuizId = (a.quizId && typeof a.quizId === "object" ? a.quizId._id : a.quizId) || "";
+      const attemptedQuizId =
+        (a.quizId && typeof a.quizId === "object" ? a.quizId._id : a.quizId) || "";
       return attemptedQuizId.toString() === quiz._id?.toString();
     });
     if (attempted) {

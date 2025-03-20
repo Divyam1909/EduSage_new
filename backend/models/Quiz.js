@@ -6,7 +6,7 @@ const QuizSchema = new mongoose.Schema({
   difficulty: { type: String, required: true },
   timeLimit: { type: Number, required: true },
   points: { type: Number, required: true },
-  clearable: { type: Boolean, default: true }, // New flag for allowing clear attempts
+  clearable: { type: Boolean, default: true },
   questions: [
     {
       questionText: { type: String, required: true },

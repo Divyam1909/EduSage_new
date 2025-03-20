@@ -16,7 +16,8 @@ mongoose
   .then(() => console.log("MongoDB connected"))
   .catch((err) => console.error("MongoDB connection error:", err));
 
-/** ========== USER SCHEMA ========== **/
+/** ========== MODELS ========== **/
+// User Model
 const UserSchema = new mongoose.Schema({
   name: { type: String, required: true },
   rollno: { type: String, unique: true, required: true },
@@ -27,27 +28,30 @@ const UserSchema = new mongoose.Schema({
   email: { type: String, required: true },
   password: { type: String, required: true },
   realPassword: { type: String, required: true },
+  wisdomPoints: { type: Number, default: 0 },
+  experience: { type: Number, default: 0 },
+  rank: { type: Number, default: 0 },
+  questionsAnswered: { type: Number, default: 0 },
+  quizzesAttempted: { type: Number, default: 0 },
 });
-
 const User = mongoose.model("User", UserSchema);
 
-/** ========== RESOURCE SCHEMA ========== **/
+// Resource Model
 const ResourceSchema = new mongoose.Schema({
   fileName: { type: String, required: true },
   courseName: { type: String, required: true },
   fileLink: { type: String, required: true },
   bookmarked: { type: Boolean, default: false },
 });
-
 const Resource = mongoose.model("Resource", ResourceSchema);
 
-/** ========== EVENT SCHEMA ========== **/
+// Event Model – stored in ./models/Event.js
 const Event = require("./models/Event.js");
 
-/** ========== QUESTION MODEL ========== **/
+// Question Model – stored in ./models/question.js
 const Question = require("./models/question.js");
 
-/** ========== NEW ANSWER SCHEMA ========== **/
+// Answer Model
 const AnswerSchema = new mongoose.Schema({
   questionId: { type: mongoose.Schema.Types.ObjectId, ref: "Question", required: true },
   user: { type: String, required: true },
@@ -58,8 +62,23 @@ const AnswerSchema = new mongoose.Schema({
   comments: { type: Number, default: 0 },
   points: { type: Number, default: 0 },
 });
-
 const Answer = mongoose.model("Answer", AnswerSchema);
+
+// SubjectMark Model – stored in ./models/SubjectMark.js
+const SubjectMarkSchema = new mongoose.Schema({
+  user: { type: String, required: true },
+  subject: { type: String, required: true },
+  cia1: { type: Number, required: true },
+  cia2: { type: Number, required: true },
+  midSem: { type: Number, required: true },
+  endSem: { type: Number, required: true },
+});
+const SubjectMark = mongoose.model("SubjectMark", SubjectMarkSchema);
+
+// Quiz Model – stored in ./models/Quiz.js
+const Quiz = require("./models/Quiz.js");
+// QuizAttempt Model – stored in ./models/QuizAttempt.js
+const QuizAttempt = require("./models/QuizAttempt.js");
 
 /** ========== REGISTER USER API ========== **/
 app.post("/register", async (req, res) => {
@@ -80,6 +99,11 @@ app.post("/register", async (req, res) => {
       email,
       password: hashedPassword,
       realPassword: password,
+      wisdomPoints: 0,
+      experience: 0,
+      rank: 0,
+      questionsAnswered: 0,
+      quizzesAttempted: 0,
     });
     await newUser.save();
     res.status(201).json({ message: "User registered successfully" });
@@ -244,7 +268,7 @@ app.delete("/api/events/:id", async (req, res) => {
 });
 
 /** ========== NEW ENDPOINT: Upload Academic Calendar PDF ========== **/
-const uploadHandler = multer(); // Using memory storage
+const uploadHandler = multer();
 const { extractEventsFromPDF } = require("./pdfParser");
 
 app.post("/api/calendar/upload", uploadHandler.single("pdf"), async (req, res) => {
@@ -306,6 +330,7 @@ app.get("/api/questions/:id", async (req, res) => {
   }
 });
 
+// Increment wisdom points on a question
 app.put("/api/questions/:id/wisdom", async (req, res) => {
   try {
     const { wisdomPoints } = req.body;
@@ -322,6 +347,7 @@ app.put("/api/questions/:id/wisdom", async (req, res) => {
   }
 });
 
+// Get answers for a question
 app.get("/api/questions/:id/answers", async (req, res) => {
   try {
     const answers = await Answer.find({ questionId: req.params.id }).sort({ answeredAt: -1 });
@@ -331,6 +357,7 @@ app.get("/api/questions/:id/answers", async (req, res) => {
   }
 });
 
+// Post an answer for a question
 app.post("/api/questions/:id/answers", async (req, res) => {
   try {
     const { user, content, attachments } = req.body;
@@ -351,6 +378,7 @@ app.post("/api/questions/:id/answers", async (req, res) => {
   }
 });
 
+// Update an answer
 app.put("/api/answers/:id", async (req, res) => {
   try {
     const { content, attachments } = req.body;
@@ -370,6 +398,7 @@ app.put("/api/answers/:id", async (req, res) => {
   }
 });
 
+// Delete an answer
 app.delete("/api/answers/:id", async (req, res) => {
   try {
     const answer = await Answer.findById(req.params.id);
@@ -403,6 +432,7 @@ function authenticateToken(req, res, next) {
   });
 }
 
+// Get user profile
 app.get("/profile", authenticateToken, async (req, res) => {
   try {
     const { rollno } = req.user;
@@ -417,16 +447,21 @@ app.get("/profile", authenticateToken, async (req, res) => {
   }
 });
 
-/** ========== NEW QUIZ MODELS & APIs ========== **/
-// Note: Ensure that Quiz.js and QuizAttempt.js are in a folder named “models”
-const Quiz = require("./models/Quiz.js");
-const QuizAttempt = require("./models/QuizAttempt.js");
-
+/** ========== QUIZ APIs ========== **/
 // Create a new Quiz
 app.post("/api/quizzes", async (req, res) => {
   try {
     const { title, topic, difficulty, timeLimit, points, questions, clearable } = req.body;
-    if (!title || !topic || !difficulty || timeLimit <= 0 || points <= 0 || !questions || !Array.isArray(questions) || questions.length === 0) {
+    if (
+      !title ||
+      !topic ||
+      !difficulty ||
+      timeLimit <= 0 ||
+      points <= 0 ||
+      !questions ||
+      !Array.isArray(questions) ||
+      questions.length === 0
+    ) {
       return res.status(400).json({ message: "All quiz fields are required and must be valid" });
     }
     const newQuiz = new Quiz({ title, topic, difficulty, timeLimit, points, questions, clearable });
@@ -496,10 +531,12 @@ app.post("/api/quizzes/:id/attempt", async (req, res) => {
       answers: processedAnswers,
       totalScore,
       timeTaken,
-      clearable: quiz.clearable, // Copy the flag from the quiz
+      clearable: quiz.clearable,
     });
     await newAttempt.save();
     console.log("Quiz attempt saved with total score:", totalScore);
+    // Update user's quizzesAttempted and wisdomPoints
+    await User.findOneAndUpdate({ rollno: user }, { $inc: { quizzesAttempted: 1, wisdomPoints: totalScore } });
     res.status(201).json({ attempt: newAttempt, totalScore });
   } catch (error) {
     console.error("Error submitting quiz attempt:", error);
@@ -519,8 +556,7 @@ app.get("/api/quizAttempts", async (req, res) => {
   }
 });
 
-// DELETE all quiz attempts for a given user (only clearable attempts)
-// NOTE: Defined BEFORE the dynamic deletion endpoint
+// DELETE all clearable quiz attempts for a user
 app.delete("/api/quizAttempts/clearAll", async (req, res) => {
   try {
     console.log("Clear all attempts requested for user:", req.query.user);
@@ -546,6 +582,121 @@ app.delete("/api/quizAttempts/:id", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
+/** ========== SUBJECT MARKS & STATS APIs ========== **/
+// Middleware: authenticateToken is defined below
+
+// Get subject marks for the logged-in user
+app.get("/api/user/stats/subject", authenticateToken, async (req, res) => {
+  try {
+    const marks = await SubjectMark.find({ user: req.user.rollno });
+    res.json(marks);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Add a new subject mark record
+app.post("/api/user/stats/subject", authenticateToken, async (req, res) => {
+  try {
+    const { subject, cia1, cia2, midSem, endSem } = req.body;
+    const newMark = new SubjectMark({
+      user: req.user.rollno,
+      subject,
+      cia1,
+      cia2,
+      midSem,
+      endSem,
+    });
+    await newMark.save();
+    res.status(201).json(newMark);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Update subject mark record
+app.put("/api/user/stats/subject/:id", authenticateToken, async (req, res) => {
+  try {
+    const { subject, cia1, cia2, midSem, endSem } = req.body;
+    const updatedMark = await SubjectMark.findOneAndUpdate(
+      { _id: req.params.id, user: req.user.rollno },
+      { subject, cia1, cia2, midSem, endSem },
+      { new: true }
+    );
+    if (!updatedMark) return res.status(404).json({ message: "Record not found" });
+    res.json(updatedMark);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Delete subject mark record
+app.delete("/api/user/stats/subject/:id", authenticateToken, async (req, res) => {
+  try {
+    const deleted = await SubjectMark.findOneAndDelete({ _id: req.params.id, user: req.user.rollno });
+    if (!deleted) return res.status(404).json({ message: "Record not found" });
+    res.json({ message: "Record deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+/** ========== TOP SAGES API ========== **/
+// Get top three sages (users sorted by wisdomPoints descending)
+app.get("/api/top-sages", async (req, res) => {
+  try {
+    const topSages = await User.find().sort({ wisdomPoints: -1 }).limit(3).select("name wisdomPoints rank");
+    res.json(topSages);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// NEW ENDPOINT: Class Results
+// This endpoint aggregates subject marks to compute each user's overall percentage,
+// then returns the class average, a sorted list of results, and the total number of students.
+app.get("/api/classResults", async (req, res) => {
+  try {
+    const results = await SubjectMark.aggregate([
+      {
+        $group: {
+          _id: "$user",
+          totalMarks: { $sum: { $add: ["$cia1", "$cia2", "$midSem", "$endSem"] } },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          overall: { $multiply: [{ $divide: ["$totalMarks", { $multiply: ["$count", 120] }] }, 100] }
+        }
+      },
+      { $sort: { overall: -1 } }
+    ]);
+    const totalStudents = results.length;
+    const classAverageResult = results.reduce((acc, curr) => acc + curr.overall, 0) / (totalStudents || 1);
+    res.json({ classAverageResult, results, totalStudents });
+  } catch (error) {
+    console.error("Error computing class results:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Middleware to authenticate JWT token
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+  if (!token) {
+    return res.status(401).json({ message: "Token missing" });
+  }
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(403).json({ message: "Invalid token" });
+    }
+    req.user = decoded;
+    next();
+  });
+}
 
 /* START SERVER */
 const PORT = process.env.PORT || 5000;

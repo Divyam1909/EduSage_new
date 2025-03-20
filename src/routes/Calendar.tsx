@@ -176,10 +176,12 @@ export default function CalendarComponent() {
         <nav>
           <ul className="space-y-2">
             <li>
+            <Link to="/home">
               <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
                 <Users className="mr-2 h-4 w-4" />
                 Discussion Forum
               </Button>
+              </Link>
             </li>
             <li>
               <Link to="/Resources">

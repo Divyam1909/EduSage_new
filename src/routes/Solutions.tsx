@@ -57,6 +57,7 @@ interface Question {
   subject: string;
   wisdomPoints: number;
   askedAt: string;
+  solved?: boolean;
 }
 
 export default function Solutions() {
@@ -73,7 +74,7 @@ export default function Solutions() {
   const [editingAnswerContent, setEditingAnswerContent] = useState("");
   const [editingAttachments, setEditingAttachments] = useState<File[]>([]);
 
-  // Fetch question details
+  // Fetch question details from backend
   const fetchQuestion = async () => {
     try {
       const res = await fetch(`http://localhost:5000/api/questions/${id}`);
@@ -86,7 +87,7 @@ export default function Solutions() {
     }
   };
 
-  // Fetch answers for the question
+  // Fetch answers for the question from backend
   const fetchAnswers = async () => {
     try {
       const res = await fetch(`http://localhost:5000/api/questions/${id}/answers`);
@@ -106,9 +107,6 @@ export default function Solutions() {
     }
   }, [id]);
 
-  // Check if current user ("You") already answered
-  const userAnswer = answers.find((a) => a.user === "You");
-
   // Handle file uploads for new answer
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -125,6 +123,7 @@ export default function Solutions() {
     }
   };
 
+  // Submit a new answer to backend
   const handleSubmitAnswer = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (newAnswer.trim() || attachments.length > 0) {
@@ -154,6 +153,7 @@ export default function Solutions() {
     }
   };
 
+  // Update an existing answer via backend
   const handleUpdateAnswer = async (answerId: string) => {
     try {
       const res = await fetch(`http://localhost:5000/api/answers/${answerId}`, {
@@ -181,6 +181,7 @@ export default function Solutions() {
     }
   };
 
+  // Delete an answer via backend
   const handleDeleteAnswer = async (answerId: string) => {
     try {
       const res = await fetch(`http://localhost:5000/api/answers/${answerId}`, {
@@ -197,6 +198,7 @@ export default function Solutions() {
     }
   };
 
+  // Toggle display of all answers or only the first answer
   const displayedAnswers = showAllAnswers ? answers : answers.slice(0, 1);
 
   return (
@@ -376,66 +378,44 @@ export default function Solutions() {
                     <p className="text-xs text-gray-500 mt-1">
                       Answered on: {formatDate(new Date(answer.answeredAt))}
                     </p>
-                    {answer.attachments?.length ? (
-                      <div className="mt-2">
-                        {answer.attachments.map((file: File, index) => (
-                          <div key={index} className="flex gap-2">
-                            <FileText className="w-4 h-4" /> {file.name}
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
                   </>
                 )}
               </CardContent>
-              <CardFooter className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="sm">
-                    <ThumbsUp className="w-4 h-4 mr-1" />
-                    {answer.likes}
-                  </Button>
-                  <Button variant="ghost" size="sm">
-                    <MessageSquare className="w-4 h-4 mr-1" />
-                    {answer.comments}
-                  </Button>
-                </div>
+              <CardFooter className="flex justify-end space-x-2">
                 {answer.user === "You" && (
-                  <div className="flex items-center gap-2">
+                  <>
                     <Button
-                      variant="outline"
-                      size="sm"
+                      variant="ghost"
                       onClick={() => {
-                        setEditingAnswerId(answer._id!);
+                        setEditingAnswerId(answer._id || "");
                         setEditingAnswerContent(answer.content);
-                        setEditingAttachments(answer.attachments || []);
                       }}
                     >
-                      <Edit className="w-4 h-4 mr-1" />
-                      Edit
+                      <Edit className="w-4 h-4" />
                     </Button>
                     <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => answer._id && handleDeleteAnswer(answer._id)}
+                      variant="ghost"
+                      onClick={() =>
+                        answer._id && handleDeleteAnswer(answer._id)
+                      }
                     >
-                      <Trash className="w-4 h-4 mr-1" />
-                      Delete
+                      <Trash className="w-4 h-4" />
                     </Button>
-                  </div>
+                  </>
                 )}
               </CardFooter>
             </Card>
           ))}
 
-          {/* Only show "Answer this question" button if user hasn't answered yet */}
-          {!userAnswer && !showAnswerForm && (
-            <Button
-              onClick={() => setShowAnswerForm(true)}
-              variant="outline"
-              className="bg-purple-600 text-white hover:bg-purple-700 transition-colors"
-            >
-              <Plus className="mr-2" />
-              Answer this question
+          {answers.length > 1 && (
+            <Button variant="ghost" onClick={() => setShowAllAnswers(!showAllAnswers)}>
+              {showAllAnswers ? "Show Less" : "Show All Answers"}
+            </Button>
+          )}
+
+          {!answers.find((a) => a.user === "You") && !showAnswerForm && (
+            <Button className="mt-4" onClick={() => setShowAnswerForm(true)}>
+              Add Your Answer
             </Button>
           )}
 
@@ -444,39 +424,18 @@ export default function Solutions() {
               <Textarea
                 value={newAnswer}
                 onChange={(e) => setNewAnswer(e.target.value)}
-                placeholder="Write your answer..."
-                rows={3}
+                rows={4}
+                placeholder="Write your answer here..."
                 className="mb-2"
               />
-              <div className="flex items-center mb-2">
-                <Input
-                  type="file"
-                  onChange={handleFileUpload}
-                  multiple
-                  className="border rounded p-2 mr-2"
-                />
-                <Button
-                  type="button"
-                  onClick={() => setShowAnswerForm(false)}
-                  variant="ghost"
-                  className="mr-2"
-                >
+              <Input type="file" multiple onChange={handleFileUpload} className="mb-2" />
+              <div className="flex space-x-2">
+                <Button type="submit">Submit Answer</Button>
+                <Button variant="ghost" onClick={() => setShowAnswerForm(false)}>
                   Cancel
-                </Button>
-                <Button type="submit" className="bg-purple-600 text-white hover:bg-purple-700 transition-colors">
-                  Submit Answer
                 </Button>
               </div>
             </form>
-          )}
-
-          {answers.length > 1 && !showAllAnswers && (
-            <Button
-              onClick={() => setShowAllAnswers(true)}
-              className="bg-purple-600 text-white hover:bg-purple-700 transition-colors mt-4"
-            >
-              Show All Answers
-            </Button>
           )}
         </main>
       </div>

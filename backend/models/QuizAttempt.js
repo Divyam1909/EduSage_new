@@ -13,7 +13,7 @@ const QuizAttemptSchema = new mongoose.Schema({
   ],
   totalScore: { type: Number, default: 0 },
   timeTaken: { type: Number, required: true },
-  clearable: { type: Boolean, default: true }, // New flag copied from the quiz
+  clearable: { type: Boolean, default: true },
   submittedAt: { type: Date, default: Date.now },
 });
 
