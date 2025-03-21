@@ -5,10 +5,15 @@ const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
+const fs = require("fs");
+const path = require("path");
 
 const app = express();
 app.use(express.json());
 app.use(cors());
+
+// Serve static files from the uploads directory
+app.use('/uploads', express.static('uploads'));
 
 // Connect to MongoDB
 mongoose
@@ -33,6 +38,11 @@ const UserSchema = new mongoose.Schema({
   rank: { type: Number, default: 0 },
   questionsAnswered: { type: Number, default: 0 },
   quizzesAttempted: { type: Number, default: 0 },
+  photoUrl: {
+    type: String,
+    default:
+      "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png",
+  },
 });
 const User = mongoose.model("User", UserSchema);
 
@@ -447,6 +457,95 @@ app.get("/profile", authenticateToken, async (req, res) => {
   }
 });
 
+/** ========== NEW ENDPOINT: Update Profile Photo ========== **/
+app.post("/api/profile/photo", authenticateToken, uploadHandler.single("photo"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+    const uploadPath = path.join(__dirname, "uploads");
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath);
+    }
+    const filename = Date.now() + "-" + req.file.originalname;
+    const filePath = path.join(uploadPath, filename);
+    fs.writeFileSync(filePath, req.file.buffer);
+    const PORT = process.env.PORT || 5000;
+    const photoUrl = `http://localhost:${PORT}/uploads/${filename}`;
+    await User.findOneAndUpdate({ rollno: req.user.rollno }, { photoUrl }, { new: true });
+    res.json({ photoUrl });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error uploading photo" });
+  }
+});
+
+/** ========== TOP SAGES API (Updated) ========== **/
+// Compute top sages by aggregating subject marks and joining with User info.
+app.get("/api/top-sages", async (req, res) => {
+  try {
+    const topSages = await SubjectMark.aggregate([
+      {
+        $group: {
+          _id: "$user",
+          totalMarks: { $sum: { $add: ["$cia1", "$cia2", "$midSem", "$endSem"] } },
+        },
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "_id",
+          foreignField: "rollno",
+          as: "userInfo",
+        },
+      },
+      { $unwind: "$userInfo" },
+      {
+        $project: {
+          _id: 0,
+          rollno: "$userInfo.rollno",
+          name: "$userInfo.name",
+          photoUrl: "$userInfo.photoUrl",
+          wisdomPoints: "$totalMarks",
+          rank: "$userInfo.rank",
+        },
+      },
+      { $sort: { wisdomPoints: -1 } },
+      { $limit: 3 },
+    ]);
+    res.json(topSages);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// NEW ENDPOINT: Class Results
+app.get("/api/classResults", async (req, res) => {
+  try {
+    const results = await SubjectMark.aggregate([
+      {
+        $group: {
+          _id: "$user",
+          totalMarks: { $sum: { $add: ["$cia1", "$cia2", "$midSem", "$endSem"] } },
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $project: {
+          overall: { $multiply: [{ $divide: ["$totalMarks", { $multiply: ["$count", 120] }] }, 100] },
+        },
+      },
+      { $sort: { overall: -1 } },
+    ]);
+    const totalStudents = results.length;
+    const classAverageResult = results.reduce((acc, curr) => acc + curr.overall, 0) / (totalStudents || 1);
+    res.json({ classAverageResult, results, totalStudents });
+  } catch (error) {
+    console.error("Error computing class results:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 /** ========== QUIZ APIs ========== **/
 // Create a new Quiz
 app.post("/api/quizzes", async (req, res) => {
@@ -584,8 +683,6 @@ app.delete("/api/quizAttempts/:id", async (req, res) => {
 });
 
 /** ========== SUBJECT MARKS & STATS APIs ========== **/
-// Middleware: authenticateToken is defined below
-
 // Get subject marks for the logged-in user
 app.get("/api/user/stats/subject", authenticateToken, async (req, res) => {
   try {
@@ -642,11 +739,39 @@ app.delete("/api/user/stats/subject/:id", authenticateToken, async (req, res) =>
   }
 });
 
-/** ========== TOP SAGES API ========== **/
-// Get top three sages (users sorted by wisdomPoints descending)
+/** ========== TOP SAGES API (Updated) ========== **/
+// Compute top sages by aggregating subject marks and joining with User info.
 app.get("/api/top-sages", async (req, res) => {
   try {
-    const topSages = await User.find().sort({ wisdomPoints: -1 }).limit(3).select("name wisdomPoints rank");
+    const topSages = await SubjectMark.aggregate([
+      {
+        $group: {
+          _id: "$user",
+          totalMarks: { $sum: { $add: ["$cia1", "$cia2", "$midSem", "$endSem"] } },
+        },
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "_id",
+          foreignField: "rollno",
+          as: "userInfo",
+        },
+      },
+      { $unwind: "$userInfo" },
+      {
+        $project: {
+          _id: 0,
+          rollno: "$userInfo.rollno",
+          name: "$userInfo.name",
+          photoUrl: "$userInfo.photoUrl",
+          wisdomPoints: "$totalMarks",
+          rank: "$userInfo.rank",
+        },
+      },
+      { $sort: { wisdomPoints: -1 } },
+      { $limit: 3 },
+    ]);
     res.json(topSages);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -654,8 +779,6 @@ app.get("/api/top-sages", async (req, res) => {
 });
 
 // NEW ENDPOINT: Class Results
-// This endpoint aggregates subject marks to compute each user's overall percentage,
-// then returns the class average, a sorted list of results, and the total number of students.
 app.get("/api/classResults", async (req, res) => {
   try {
     const results = await SubjectMark.aggregate([
@@ -663,15 +786,15 @@ app.get("/api/classResults", async (req, res) => {
         $group: {
           _id: "$user",
           totalMarks: { $sum: { $add: ["$cia1", "$cia2", "$midSem", "$endSem"] } },
-          count: { $sum: 1 }
-        }
+          count: { $sum: 1 },
+        },
       },
       {
         $project: {
-          overall: { $multiply: [{ $divide: ["$totalMarks", { $multiply: ["$count", 120] }] }, 100] }
-        }
+          overall: { $multiply: [{ $divide: ["$totalMarks", { $multiply: ["$count", 120] }] }, 100] },
+        },
       },
-      { $sort: { overall: -1 } }
+      { $sort: { overall: -1 } },
     ]);
     const totalStudents = results.length;
     const classAverageResult = results.reduce((acc, curr) => acc + curr.overall, 0) / (totalStudents || 1);
@@ -682,22 +805,8 @@ app.get("/api/classResults", async (req, res) => {
   }
 });
 
-// Middleware to authenticate JWT token
-function authenticateToken(req, res, next) {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1];
-  if (!token) {
-    return res.status(401).json({ message: "Token missing" });
-  }
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-    if (err) {
-      return res.status(403).json({ message: "Invalid token" });
-    }
-    req.user = decoded;
-    next();
-  });
-}
+/** ========== QUIZ APIs ========== **/
+// (Quiz APIs as defined above remain unchanged)
 
-/* START SERVER */
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

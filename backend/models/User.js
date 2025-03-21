@@ -15,6 +15,11 @@ const UserSchema = new mongoose.Schema({
   rank: { type: Number, default: 0 },
   questionsAnswered: { type: Number, default: 0 },
   quizzesAttempted: { type: Number, default: 0 },
+  photoUrl: {
+    type: String,
+    default:
+      "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png",
+  },
 });
 
 module.exports = mongoose.model("User", UserSchema);

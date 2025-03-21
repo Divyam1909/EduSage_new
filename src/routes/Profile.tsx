@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -6,7 +6,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Progress } from "@/components/ui/progress";
 import {
   Users,
   FileText,
@@ -15,8 +14,18 @@ import {
   Bookmark,
   Calendar,
   Bot,
+  Edit3,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { 
+  LineChart, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  Tooltip, 
+  CartesianGrid, 
+  ResponsiveContainer 
+} from "recharts";
 
 interface SubjectMarks {
   _id?: string;
@@ -52,7 +61,13 @@ export default function ProfilePage() {
     results: [],
     totalStudents: 0,
   });
+  const [profilePhoto, setProfilePhoto] = useState<string>(
+    "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png"
+  );
   const token = localStorage.getItem("token");
+
+  // Reference for the hidden file input
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Compute overall result (percentage) for the current user based on their subject marks.
   const myOverallResult =
@@ -64,10 +79,17 @@ export default function ProfilePage() {
         ) / subjectMarks.length
       : 0;
 
+  // Prepare data for the overall result chart
+  const overallChartData = subjectMarks.map((mark) => ({
+    subject: mark.subject,
+    total: mark.cia1 + mark.cia2 + mark.midSem + mark.endSem,
+  }));
+
   // Determine current user's rank based on class results
-  const currentUserRank = userData && classResults.results.length > 0
-    ? classResults.results.findIndex((r) => r._id === userData.rollno) + 1
-    : 0;
+  const currentUserRank =
+    userData && classResults.results.length > 0
+      ? classResults.results.findIndex((r) => r._id === userData.rollno) + 1
+      : 0;
   const studentsBeaten =
     classResults.totalStudents && currentUserRank
       ? classResults.totalStudents - currentUserRank
@@ -83,7 +105,12 @@ export default function ProfilePage() {
         },
       })
         .then((response) => response.json())
-        .then((data) => setUserData(data))
+        .then((data) => {
+          setUserData(data);
+          if (data.photoUrl) {
+            setProfilePhoto(data.photoUrl);
+          }
+        })
         .catch((error) => console.error("Error fetching profile:", error));
 
       // Fetch subject marks for the current user
@@ -106,6 +133,32 @@ export default function ProfilePage() {
         .catch((err) => console.error("Error fetching class results:", err));
     }
   }, [token]);
+
+  // Trigger file input click when edit icon is clicked
+  const handleEditPhotoClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  // Handle file change and upload photo
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    const photoData = new FormData();
+    photoData.append("photo", file);
+    fetch("http://localhost:5000/api/profile/photo", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token },
+      body: photoData,
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.photoUrl) {
+          setProfilePhoto(data.photoUrl);
+          setUserData((prev: any) => ({ ...prev, photoUrl: data.photoUrl }));
+        }
+      })
+      .catch((err) => console.error("Error uploading photo:", err));
+  };
 
   const handleViewAnalysisClick = () => {
     setShowDetailedAnalysis(true);
@@ -149,7 +202,6 @@ export default function ProfilePage() {
   };
 
   const handleAddMark = () => {
-    // Check if subject already exists (case-insensitive)
     const exists = subjectMarks.some(
       (mark) =>
         mark.subject.toLowerCase() === formData.subject.toLowerCase() &&
@@ -275,23 +327,40 @@ export default function ProfilePage() {
       {/* Main Content */}
       <div className="flex-1">
         <main className="container mx-auto mt-8 p-4">
-          <div className="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto">
-            <div className="flex flex-col md:flex-row items-center mb-6">
+          <div className="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto relative">
+            {/* Profile Photo with edit overlay */}
+            <div className="relative w-48 h-48 mx-auto">
               <img
-                src="https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png"
+                src={profilePhoto}
                 alt="Student Photo"
-                className="w-48 h-48 rounded-full object-cover mb-4 md:mb-0 md:mr-6"
+                className="w-48 h-48 rounded-full object-cover"
               />
-              <div className="text-center md:text-left">
-                <h2 className="text-2xl font-bold mb-2">
-                  {userData ? userData.name : "Loading..."}
-                </h2>
-                <Button onClick={() => setIsStatsOpen(true)} className="bg-purple-600 hover:bg-purple-700 text-white">
-                  Check my stats
-                </Button>
-              </div>
+              <button
+                onClick={handleEditPhotoClick}
+                className="absolute bottom-2 right-2 bg-purple-600 hover:bg-purple-700 text-white rounded-full p-2"
+              >
+                <Edit3 size={16} />
+              </button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                accept="image/*"
+                onChange={handlePhotoChange}
+              />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="text-center mt-4">
+              <h2 className="text-2xl font-bold mb-2">
+                {userData ? userData.name : "Loading..."}
+              </h2>
+              <Button
+                onClick={() => setIsStatsOpen(true)}
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+              >
+                Check my stats
+              </Button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
               <div>
                 <p className="font-semibold">Roll No.:</p>
                 <p>{userData ? userData.rollno : "Loading..."}</p>
@@ -318,7 +387,11 @@ export default function ProfilePage() {
               </div>
               <div>
                 <p className="font-semibold">Date of Birth:</p>
-                <p>{userData ? new Date(userData.dateOfBirth).toLocaleDateString() : "Loading..."}</p>
+                <p>
+                  {userData
+                    ? new Date(userData.dateOfBirth).toLocaleDateString("en-GB")
+                    : "Loading..."}
+                </p>
               </div>
             </div>
           </div>
@@ -332,7 +405,11 @@ export default function ProfilePage() {
                 {showDetailedAnalysis ? (
                   <>
                     Detailed Analysis
-                    <Button variant="ghost" onClick={handleBackToStatsClick} className="ml-4 text-sm text-purple-600">
+                    <Button
+                      variant="ghost"
+                      onClick={handleBackToStatsClick}
+                      className="ml-4 text-sm text-purple-600"
+                    >
                       Back to Overview
                     </Button>
                   </>
@@ -345,17 +422,45 @@ export default function ProfilePage() {
               <div className="grid gap-4 py-4">
                 <div className="space-y-2">
                   <h3 className="font-semibold">Overall Result</h3>
-                  <Progress value={myOverallResult} className="w-full bg-purple-200" />
-                  <p className="text-sm text-right">{myOverallResult.toFixed(1)}%</p>
-                  <Button variant="ghost" className="mt-2 text-purple-600" onClick={handleViewAnalysisClick}>
+                  {overallChartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={200}>
+                      <LineChart data={overallChartData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="subject" />
+                        <YAxis domain={[0, 120]} />
+                        <Tooltip />
+                        <Line type="monotone" dataKey="total" stroke="#6B46C1" strokeWidth={2} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <p>No subject marks available</p>
+                  )}
+                  <div className="bg-purple-600 text-white text-sm font-bold text-center py-2 px-4 rounded w-28">
+                    {myOverallResult.toFixed(1)}%
+                  </div>
+                  <Button
+                    variant="default"
+                    className="mt-2 bg-purple-600 hover:bg-purple-700 text-white"
+                    onClick={handleViewAnalysisClick}
+                  >
                     View Detailed Analysis
                   </Button>
                 </div>
                 <div className="space-y-2">
                   <h3 className="font-semibold">Class Average Result</h3>
-                  <Progress value={classResults.classAverageResult} className="w-full bg-purple-200" />
-                  <p className="text-sm text-right">{classResults.classAverageResult.toFixed(1)}%</p>
-                  <p className="text-sm text-purple-600">
+                  <ResponsiveContainer width="100%" height={200}>
+                    <LineChart data={[{ name: "Average", value: classResults.classAverageResult }]}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis domain={[0, 100]} />
+                      <Tooltip />
+                      <Line type="monotone" dataKey="value" stroke="#6B46C1" strokeWidth={2} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                  <p className="text-sm text-right">
+                    {classResults.classAverageResult.toFixed(1)}%
+                  </p>
+                  <p className="text-sm text-purple-600 font-semibold">
                     You beat {studentsBeaten} out of {classResults.totalStudents} students.
                   </p>
                 </div>
@@ -363,7 +468,6 @@ export default function ProfilePage() {
             ) : (
               <div className="py-4">
                 <h3 className="text-xl font-bold mb-4">Subject Marks</h3>
-                {/* Collapsible Dropdown for each subject */}
                 <div className="mb-4">
                   {subjectMarks.map((mark) => (
                     <div key={mark._id} className="border rounded mb-2">
@@ -392,7 +496,6 @@ export default function ProfilePage() {
                     </div>
                   ))}
                 </div>
-                {/* Form for adding/editing marks */}
                 <div className="space-y-2">
                   <h4 className="font-bold">
                     {selectedSubject ? "Edit Subject Mark" : "Add New Subject Mark"}
@@ -479,3 +582,4 @@ export default function ProfilePage() {
     </div>
   );
 }
+

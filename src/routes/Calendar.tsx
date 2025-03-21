@@ -104,7 +104,7 @@ export default function CalendarComponent() {
   };
 
   const handleDeleteEvent = async () => {
-    if (!selectedEvent) return;
+    if (!selectedEvent) return; 
     try {
       await axios.delete(`http://localhost:5000/api/events/${selectedEvent.id}`);
       setEvents((prevEvents) => prevEvents.filter((ev) => ev.id !== selectedEvent.id));

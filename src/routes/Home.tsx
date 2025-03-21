@@ -49,9 +49,9 @@ export default function Home() {
   const [topSages, setTopSages] = useState<any[]>([]);
   const [openSubjects, setOpenSubjects] = useState<{ [key: string]: boolean }>({});
   // Notification related states:
-  const [notifications, setNotifications] = useState<any[]>([]); // full list of notifications for badge & panel
-  const [toasts, setToasts] = useState<any[]>([]); // notifications to show as auto-dismiss popup
-  const [showNotificationPanel, setShowNotificationPanel] = useState(false); // toggles notification panel
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [toasts, setToasts] = useState<any[]>([]);
+  const [showNotificationPanel, setShowNotificationPanel] = useState(false);
 
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
@@ -120,9 +120,7 @@ export default function Home() {
       ? (subjectMarks.reduce(
           (acc, mark) => acc + (mark.cia1 + mark.cia2 + mark.midSem + mark.endSem),
           0
-        ) /
-          (subjectMarks.length * 120)) *
-        100
+        ) / (subjectMarks.length * 120)) * 100
       : 0;
 
   // Notification polling: Check calendar events every minute and add notifications accordingly
@@ -132,69 +130,82 @@ export default function Home() {
         const res = await axios.get("http://localhost:5000/api/events");
         const events = res.data;
         const now = new Date();
-        const newNotifs: any[] = [];
-        events.forEach((event: any) => {
-          const eventDate = new Date(event.date);
-          // --- Day Before Notification ---
-          const dayBefore = new Date(eventDate);
-          dayBefore.setDate(eventDate.getDate() - 1);
-          if (now.toDateString() === dayBefore.toDateString()) {
-            if (!notifications.some(n => n.eventId === event._id && n.type === "dayBefore")) {
-              newNotifs.push({
-                id: Date.now() + "_" + event._id + "_dayBefore",
-                eventId: event._id,
-                message: `Reminder: "${event.title}" is tomorrow.`,
-                type: "dayBefore",
-                seen: false
-              });
-            }
-          }
-          // --- Day Of Notification ---
-          if (now.toDateString() === eventDate.toDateString()) {
-            if (!notifications.some(n => n.eventId === event._id && n.type === "dayOf")) {
-              newNotifs.push({
-                id: Date.now() + "_" + event._id + "_dayOf",
-                eventId: event._id,
-                message: `Reminder: "${event.title}" is today.`,
-                type: "dayOf",
-                seen: false
-              });
-            }
-          }
-          // --- On-Time Notification for Time-specific events ---
-          if (event.time) {
-            // Compare hours and minutes (allowing a 1-minute window)
-            const eventHours = eventDate.getHours();
-            const eventMinutes = eventDate.getMinutes();
-            if (now.getHours() === eventHours && Math.abs(now.getMinutes() - eventMinutes) < 1) {
-              if (!notifications.some(n => n.eventId === event._id && n.type === "onTime")) {
+
+        setNotifications(prevNotifs => {
+          const newNotifs: any[] = [];
+          events.forEach((event: any) => {
+            const eventDate = new Date(event.date);
+            const dayBefore = new Date(eventDate);
+            dayBefore.setDate(eventDate.getDate() - 1);
+            if (now.toDateString() === dayBefore.toDateString()) {
+              if (!prevNotifs.some(n => n.eventId === event._id && n.type === "dayBefore")) {
                 newNotifs.push({
-                  id: Date.now() + "_" + event._id + "_onTime",
+                  id: Date.now() + "_" + event._id + "_dayBefore",
                   eventId: event._id,
-                  message: `Event "${event.title}" is starting now.`,
-                  type: "onTime",
+                  message: `Reminder: "${event.title}" is tomorrow.`,
+                  type: "dayBefore",
                   seen: false
                 });
               }
             }
-          }
+            if (now.toDateString() === eventDate.toDateString()) {
+              if (!prevNotifs.some(n => n.eventId === event._id && n.type === "dayOf")) {
+                newNotifs.push({
+                  id: Date.now() + "_" + event._id + "_dayOf",
+                  eventId: event._id,
+                  message: `Reminder: "${event.title}" is today.`,
+                  type: "dayOf",
+                  seen: false
+                });
+              }
+            }
+            if (event.time) {
+              const eventHours = eventDate.getHours();
+              const eventMinutes = eventDate.getMinutes();
+              if (now.getHours() === eventHours && Math.abs(now.getMinutes() - eventMinutes) < 1) {
+                if (!prevNotifs.some(n => n.eventId === event._id && n.type === "onTime")) {
+                  newNotifs.push({
+                    id: Date.now() + "_" + event._id + "_onTime",
+                    eventId: event._id,
+                    message: `Event "${event.title}" is starting now.`,
+                    type: "onTime",
+                    seen: false
+                  });
+                }
+              }
+            }
+          });
+          return [...prevNotifs, ...newNotifs];
         });
-        if (newNotifs.length > 0) {
-          setNotifications(prev => [...prev, ...newNotifs]);
-          setToasts(prev => [...prev, ...newNotifs]);
-        }
+
+        setToasts(prevToasts => {
+          const newToasts: any[] = [];
+          events.forEach((event: any) => {
+            const eventDate = new Date(event.date);
+            if (now.toDateString() === eventDate.toDateString()) {
+              if (!prevToasts.some(t => t.eventId === event._id && t.type === "dayOf")) {
+                newToasts.push({
+                  id: Date.now() + "_" + event._id + "_dayOf",
+                  eventId: event._id,
+                  message: `Reminder: "${event.title}" is today.`,
+                  type: "dayOf",
+                  seen: false
+                });
+              }
+            }
+          });
+          return [...prevToasts, ...newToasts];
+        });
       } catch (error) {
         console.error("Error checking notifications:", error);
       }
     };
 
-    // Run immediately and then every 60 seconds
     checkNotifications();
     const interval = setInterval(checkNotifications, 60000);
     return () => clearInterval(interval);
-  }, [notifications]);
+  }, []);
 
-  // Auto-dismiss toast notifications after 5 seconds
   useEffect(() => {
     if (toasts.length > 0) {
       const timer = setTimeout(() => {
@@ -204,12 +215,10 @@ export default function Home() {
     }
   }, [toasts]);
 
-  // Helper function to delete a notification from the panel
   const handleDeleteNotification = (id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
   };
 
-  // Build a profile object for the dashboard.
   const userProfile = {
     name: userData && userData.name ? userData.name : "User",
     level: userData && userData.level ? userData.level : 1,
@@ -222,7 +231,6 @@ export default function Home() {
     rank: userData && userData.rank ? userData.rank : 0,
   };
 
-  // Delete a subject mark
   const handleDeleteMark = async (id: string) => {
     try {
       await axios.delete(`http://localhost:5000/api/user/stats/subject/${id}`, {
@@ -234,7 +242,6 @@ export default function Home() {
     }
   };
 
-  // Toggle visibility for subject details in the collapsible dropdown
   const toggleSubjectDropdown = (id: string) => {
     setOpenSubjects((prev) => ({
       ...prev,
@@ -335,7 +342,7 @@ export default function Home() {
       <div className="flex-1 flex flex-col">
         {/* Header */}
         <header className="bg-purple-600 text-white p-4">
-          <div className="max-w-6xl mx-auto flex justify-between items-center">
+          <div className="max-w-7xl mx-auto flex justify-between items-center">
             <div className="flex items-center space-x-4">
               <Input
                 value={searchQuery}
@@ -355,21 +362,23 @@ export default function Home() {
               </Link>
             </div>
             <div className="flex items-center space-x-4">
-            <button 
-              className="relative focus:outline-none"
-              onClick={() => setShowNotificationPanel(true)}
-            >
-              <Bell className="w-6 h-6" />
-              {notifications.filter(n => !n.seen).length > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full text-xs w-5 h-5 flex items-center justify-center">
-                  {notifications.filter(n => !n.seen).length}
-                </span>
-              )}
-            </button>
-
+              <button 
+                className="relative focus:outline-none"
+                onClick={() => setShowNotificationPanel(true)}
+              >
+                <Bell className="w-6 h-6" />
+                {notifications.filter(n => !n.seen).length > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full text-xs w-5 h-5 flex items-center justify-center">
+                    {notifications.filter(n => !n.seen).length}
+                  </span>
+                )}
+              </button>
               <Link to="/profile">
                 <Avatar>
-                  <AvatarImage src="/placeholder-user.jpg" alt="User" />
+                  <AvatarImage
+                    src={userData && userData.photoUrl ? userData.photoUrl : "/placeholder-user.jpg"}
+                    alt="User"
+                  />
                   <AvatarFallback className="text-black">
                     {userData && userData.name ? getInitials(userData.name) : "AV"}
                   </AvatarFallback>
@@ -380,7 +389,7 @@ export default function Home() {
         </header>
 
         {/* Main Section */}
-        <main className="flex-1 max-w-6xl my-8 flex px-12 space-x-8">
+        <main className="flex-1 max-w-7xl my-8 flex px-12 space-x-8">
           {/* Questions Feed */}
           <div className="w-1/2 flex flex-col">
             <h2 className="text-2xl font-bold mb-4">Recent Questions</h2>
@@ -430,11 +439,14 @@ export default function Home() {
           </div>
 
           {/* Right Column: Dashboard */}
-          <div className="w-1/2 space-y-8 flex flex-col">
+          <div className="w-1/2 ml-4 flex flex-col space-y-8">
             <div className="bg-white rounded-lg shadow-md p-6">
               <div className="flex items-center mb-4">
                 <Avatar className="w-16 h-16 mr-4">
-                  <AvatarImage src="/placeholder-user.jpg" alt={userProfile.name} />
+                  <AvatarImage
+                    src={userData && userData.photoUrl ? userData.photoUrl : "/placeholder-user.jpg"}
+                    alt={userProfile.name}
+                  />
                   <AvatarFallback>
                     {userData && userData.name ? getInitials(userData.name) : "AV"}
                   </AvatarFallback>
@@ -499,11 +511,15 @@ export default function Home() {
                 <div key={index} className="flex justify-between items-center mb-2">
                   <div className="flex items-center">
                     <Avatar className="w-8 h-8 mr-2">
+                      <AvatarImage
+                        src={sage.photoUrl ? sage.photoUrl : "/placeholder-user.jpg"}
+                        alt={sage.name}
+                      />
                       <AvatarFallback>{sage.name[0]}</AvatarFallback>
                     </Avatar>
                     <span>{sage.name}</span>
                   </div>
-                  <span className="font-semibold">
+                  <span className="font-semibold text-sm text-gray-500">
                     {sage.wisdomPoints} wisdom points
                   </span>
                 </div>
@@ -566,7 +582,6 @@ export default function Home() {
           ) : (
             <div className="py-4">
               <h3 className="text-xl font-bold mb-4">Subject Marks</h3>
-              {/* Collapsible Dropdown for each subject */}
               <div className="mb-4">
                 {subjectMarks.map((mark) => (
                   <div key={mark._id} className="border rounded mb-2">
@@ -604,7 +619,6 @@ export default function Home() {
                   </div>
                 ))}
               </div>
-              {/* Form for adding/editing subject mark */}
               <div className="space-y-2">
                 <h4 className="font-bold">Add New Subject Mark</h4>
                 <label className="block font-medium mb-1">Subject:</label>
@@ -668,7 +682,7 @@ export default function Home() {
         </DialogContent>
       </Dialog>
       
-      {/* Toast Notifications (auto-dismiss popup) */}
+      {/* Toast Notifications */}
       <div className="fixed bottom-4 left-8 space-y-2 z-50">
         {toasts.map((toast) => (
           <div
@@ -678,7 +692,7 @@ export default function Home() {
             <Bell className="w-5 h-5 mr-2" />
             <span>{toast.message}</span>
           </div>
-        ))} 
+        ))}
       </div>
 
       {/* Notification Panel */}
@@ -705,7 +719,13 @@ export default function Home() {
               >
                 <span className="text-sm">{notification.message}</span>
                 <button
-                  onClick={() => handleDeleteNotification(notification.id)}
+                  onClick={() => {
+                    if (notification.type === "dayOf") {
+                      alert("Today's event reminder cannot be deleted.");
+                    } else {
+                      handleDeleteNotification(notification.id);
+                    }
+                  }}
                   className="bg-white text-purple-800 rounded-full p-2 flex items-center justify-center hover:bg-gray-200 transition"
                 >
                   <XCircle className="w-4 h-4" />
@@ -715,8 +735,6 @@ export default function Home() {
           )}
         </div>
       )}
-
     </div>
   );
 }
-
