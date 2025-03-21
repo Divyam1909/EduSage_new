@@ -48,6 +48,11 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [topSages, setTopSages] = useState<any[]>([]);
   const [openSubjects, setOpenSubjects] = useState<{ [key: string]: boolean }>({});
+  // Notification related states:
+  const [notifications, setNotifications] = useState<any[]>([]); // full list of notifications for badge & panel
+  const [toasts, setToasts] = useState<any[]>([]); // notifications to show as auto-dismiss popup
+  const [showNotificationPanel, setShowNotificationPanel] = useState(false); // toggles notification panel
+
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
 
@@ -119,6 +124,90 @@ export default function Home() {
           (subjectMarks.length * 120)) *
         100
       : 0;
+
+  // Notification polling: Check calendar events every minute and add notifications accordingly
+  useEffect(() => {
+    const checkNotifications = async () => {
+      try {
+        const res = await axios.get("http://localhost:5000/api/events");
+        const events = res.data;
+        const now = new Date();
+        const newNotifs: any[] = [];
+        events.forEach((event: any) => {
+          const eventDate = new Date(event.date);
+          // --- Day Before Notification ---
+          const dayBefore = new Date(eventDate);
+          dayBefore.setDate(eventDate.getDate() - 1);
+          if (now.toDateString() === dayBefore.toDateString()) {
+            if (!notifications.some(n => n.eventId === event._id && n.type === "dayBefore")) {
+              newNotifs.push({
+                id: Date.now() + "_" + event._id + "_dayBefore",
+                eventId: event._id,
+                message: `Reminder: "${event.title}" is tomorrow.`,
+                type: "dayBefore",
+                seen: false
+              });
+            }
+          }
+          // --- Day Of Notification ---
+          if (now.toDateString() === eventDate.toDateString()) {
+            if (!notifications.some(n => n.eventId === event._id && n.type === "dayOf")) {
+              newNotifs.push({
+                id: Date.now() + "_" + event._id + "_dayOf",
+                eventId: event._id,
+                message: `Reminder: "${event.title}" is today.`,
+                type: "dayOf",
+                seen: false
+              });
+            }
+          }
+          // --- On-Time Notification for Time-specific events ---
+          if (event.time) {
+            // Compare hours and minutes (allowing a 1-minute window)
+            const eventHours = eventDate.getHours();
+            const eventMinutes = eventDate.getMinutes();
+            if (now.getHours() === eventHours && Math.abs(now.getMinutes() - eventMinutes) < 1) {
+              if (!notifications.some(n => n.eventId === event._id && n.type === "onTime")) {
+                newNotifs.push({
+                  id: Date.now() + "_" + event._id + "_onTime",
+                  eventId: event._id,
+                  message: `Event "${event.title}" is starting now.`,
+                  type: "onTime",
+                  seen: false
+                });
+              }
+            }
+          }
+        });
+        if (newNotifs.length > 0) {
+          setNotifications(prev => [...prev, ...newNotifs]);
+          setToasts(prev => [...prev, ...newNotifs]);
+        }
+      } catch (error) {
+        console.error("Error checking notifications:", error);
+      }
+    };
+
+    // Run immediately and then every 60 seconds
+    checkNotifications();
+    const interval = setInterval(checkNotifications, 60000);
+    return () => clearInterval(interval);
+  }, [notifications]);
+
+  // Auto-dismiss toast notifications after 5 seconds
+  useEffect(() => {
+    if (toasts.length > 0) {
+      const timer = setTimeout(() => {
+        setToasts([]);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [toasts]);
+
+  // Helper function to delete a notification from the panel
+  const handleDeleteNotification = (id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
 
   // Build a profile object for the dashboard.
   const userProfile = {
@@ -266,7 +355,18 @@ export default function Home() {
               </Link>
             </div>
             <div className="flex items-center space-x-4">
+            <button 
+              className="relative focus:outline-none"
+              onClick={() => setShowNotificationPanel(true)}
+            >
               <Bell className="w-6 h-6" />
+              {notifications.filter(n => !n.seen).length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full text-xs w-5 h-5 flex items-center justify-center">
+                  {notifications.filter(n => !n.seen).length}
+                </span>
+              )}
+            </button>
+
               <Link to="/profile">
                 <Avatar>
                   <AvatarImage src="/placeholder-user.jpg" alt="User" />
@@ -421,10 +521,14 @@ export default function Home() {
               {userData && userData.showDetailedAnalysis ? (
                 <>
                   Detailed Analysis
-                  <Button variant="ghost" onClick={() => {
-                    userData.showDetailedAnalysis = false;
-                    setUserData({ ...userData });
-                  }} className="ml-4 text-sm text-purple-600">
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      userData.showDetailedAnalysis = false;
+                      setUserData({ ...userData });
+                    }}
+                    className="ml-4 text-sm text-purple-600"
+                  >
                     Back to Overview
                   </Button>
                 </>
@@ -439,10 +543,14 @@ export default function Home() {
                 <h3 className="font-semibold">Overall Result</h3>
                 <Progress value={userProfile.myResult} className="w-full bg-purple-200" />
                 <p className="text-sm text-right">{userProfile.myResult.toFixed(1)}%</p>
-                <Button variant="ghost" className="mt-2 text-purple-600" onClick={() => {
-                  userData.showDetailedAnalysis = true;
-                  setUserData({ ...userData });
-                }}>
+                <Button
+                  variant="ghost"
+                  className="mt-2 text-purple-600"
+                  onClick={() => {
+                    userData.showDetailedAnalysis = true;
+                    setUserData({ ...userData });
+                  }}
+                >
                   View Detailed Analysis
                 </Button>
               </div>
@@ -475,14 +583,19 @@ export default function Home() {
                         <p>Mid-Semester: {mark.midSem} / 30</p>
                         <p>End-Semester: {mark.endSem} / 50</p>
                         <div className="flex gap-2 mt-2">
-                          <Button variant="outline" onClick={() => {
-                            // In a complete integration, you'd set up an edit handler here.
-                            userData.showDetailedAnalysis = false;
-                            setUserData({ ...userData });
-                          }}>
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              userData.showDetailedAnalysis = false;
+                              setUserData({ ...userData });
+                            }}
+                          >
                             Edit
                           </Button>
-                          <Button variant="destructive" onClick={() => mark._id && handleDeleteMark(mark._id)}>
+                          <Button
+                            variant="destructive"
+                            onClick={() => mark._id && handleDeleteMark(mark._id)}
+                          >
                             Delete
                           </Button>
                         </div>
@@ -554,6 +667,56 @@ export default function Home() {
           </div>
         </DialogContent>
       </Dialog>
+      
+      {/* Toast Notifications (auto-dismiss popup) */}
+      <div className="fixed bottom-4 left-8 space-y-2 z-50">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-4 rounded-lg shadow-2xl border-2 border-white flex items-center"
+          >
+            <Bell className="w-5 h-5 mr-2" />
+            <span>{toast.message}</span>
+          </div>
+        ))} 
+      </div>
+
+      {/* Notification Panel */}
+      {showNotificationPanel && (
+        <div className="fixed bottom-4 right-4 w-1/3 max-h-[70vh] overflow-y-auto bg-gradient-to-b from-purple-800 to-purple-900 text-white shadow-2xl border border-purple-700 p-6 rounded-lg z-50">
+          <div className="flex justify-between items-center mb-4 border-b border-purple-700 pb-2">
+            <h4 className="text-xl font-bold flex items-center">
+              <Bell className="w-6 h-6 mr-2" /> Notifications
+            </h4>
+            <button
+              onClick={() => setShowNotificationPanel(false)}
+              className="text-sm text-white hover:text-gray-300 transition"
+            >
+              Close
+            </button>
+          </div>
+          {notifications.length === 0 ? (
+            <p className="text-center text-gray-300">No notifications</p>
+          ) : (
+            notifications.map((notification) => (
+              <div
+                key={notification.id}
+                className="flex items-center justify-between bg-purple-700 p-3 rounded-lg mb-3 shadow-md"
+              >
+                <span className="text-sm">{notification.message}</span>
+                <button
+                  onClick={() => handleDeleteNotification(notification.id)}
+                  className="bg-white text-purple-800 rounded-full p-2 flex items-center justify-center hover:bg-gray-200 transition"
+                >
+                  <XCircle className="w-4 h-4" />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
     </div>
   );
 }
+
