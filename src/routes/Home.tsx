@@ -41,6 +41,44 @@ const formatDate = (date: Date) => {
 const getInitials = (name: string) =>
   name.split(" ").map((word) => word[0]).join("");
 
+// LEVELS CONFIGURATION
+const levels = [
+  { name: "Novice", threshold: 1000 },
+  { name: "Adept", threshold: 2500 },
+  { name: "Sage", threshold: 4000 },
+  { name: "Expert", threshold: 5500 },
+  { name: "Master", threshold: 7000 },
+];
+
+// Helper to calculate the current level and progress percentage
+function calculateLevel(experience: number) {
+  let levelName = levels[0].name;
+  let progress = 0;
+  let levelNumber = 1;
+  for (let i = 0; i < levels.length; i++) {
+    if (experience < levels[i].threshold) {
+      if (i === 0) {
+        progress = (experience / levels[i].threshold) * 100;
+        levelName = levels[i].name;
+        levelNumber = 1;
+      } else {
+        const prevThreshold = levels[i - 1].threshold;
+        const range = levels[i].threshold - prevThreshold;
+        progress = ((experience - prevThreshold) / range) * 100;
+        levelName = levels[i].name;
+        levelNumber = i + 1;
+      }
+      break;
+    } else if (i === levels.length - 1) {
+      // If experience exceeds the highest threshold, cap progress at 100%
+      progress = 100;
+      levelName = levels[i].name;
+      levelNumber = i + 1;
+    }
+  }
+  return { levelName, progress, levelNumber };
+}
+
 export default function Home() {
   const [userData, setUserData] = useState<any>(null);
   const [questions, setQuestions] = useState<any[]>([]);
@@ -52,6 +90,8 @@ export default function Home() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [toasts, setToasts] = useState<any[]>([]);
   const [showNotificationPanel, setShowNotificationPanel] = useState(false);
+  // New state for class stats (class average and rank)
+  const [classStats, setClassStats] = useState({ classAverageResult: 0, rank: 0 });
 
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
@@ -89,6 +129,26 @@ export default function Home() {
     }
   }, [token]);
 
+  // Fetch class results for calculating class average and rank
+  useEffect(() => {
+    if (token && userData) {
+      fetch("http://localhost:5000/api/classResults")
+        .then((res) => res.json())
+        .then((data) => {
+          // data.results is assumed to be sorted descending by overall result
+          const userRollno = userData.rollno;
+          let rank = 0;
+          data.results.forEach((result: any, index: number) => {
+            if (result._id === userRollno) {
+              rank = index + 1;
+            }
+          });          
+          setClassStats({ classAverageResult: data.classAverageResult, rank });
+        })
+        .catch((err) => console.error("Error fetching class results:", err));
+    }
+  }, [token, userData]);
+
   // Fetch questions from backend
   const fetchQuestions = async () => {
     try {
@@ -123,6 +183,22 @@ export default function Home() {
         ) / (subjectMarks.length * 120)) * 100
       : 0;
 
+  // Calculate level info based on experience
+  const experience = computedWisdomPoints;
+  const levelInfo = calculateLevel(experience);
+
+  const userProfile = {
+    name: userData && userData.name ? userData.name : "User",
+    // Use computed experience and level info instead of static level number
+    experience: experience,
+    wisdomPoints: computedWisdomPoints,
+    questionsAsked: userData && userData.questionsAsked ? userData.questionsAsked : 0,
+    questionsAnswered: userData && userData.questionsAnswered ? userData.questionsAnswered : 0,
+    myResult: overallResult,
+    classAverageResult: classStats.classAverageResult,
+    rank: classStats.rank,
+  };
+
   // Notification polling: Check calendar events every minute and add notifications accordingly
   useEffect(() => {
     const checkNotifications = async () => {
@@ -131,31 +207,31 @@ export default function Home() {
         const events = res.data;
         const now = new Date();
 
-        setNotifications(prevNotifs => {
+        setNotifications((prevNotifs) => {
           const newNotifs: any[] = [];
           events.forEach((event: any) => {
             const eventDate = new Date(event.date);
             const dayBefore = new Date(eventDate);
             dayBefore.setDate(eventDate.getDate() - 1);
             if (now.toDateString() === dayBefore.toDateString()) {
-              if (!prevNotifs.some(n => n.eventId === event._id && n.type === "dayBefore")) {
+              if (!prevNotifs.some((n) => n.eventId === event._id && n.type === "dayBefore")) {
                 newNotifs.push({
                   id: Date.now() + "_" + event._id + "_dayBefore",
                   eventId: event._id,
                   message: `Reminder: "${event.title}" is tomorrow.`,
                   type: "dayBefore",
-                  seen: false
+                  seen: false,
                 });
               }
             }
             if (now.toDateString() === eventDate.toDateString()) {
-              if (!prevNotifs.some(n => n.eventId === event._id && n.type === "dayOf")) {
+              if (!prevNotifs.some((n) => n.eventId === event._id && n.type === "dayOf")) {
                 newNotifs.push({
                   id: Date.now() + "_" + event._id + "_dayOf",
                   eventId: event._id,
                   message: `Reminder: "${event.title}" is today.`,
                   type: "dayOf",
-                  seen: false
+                  seen: false,
                 });
               }
             }
@@ -163,13 +239,13 @@ export default function Home() {
               const eventHours = eventDate.getHours();
               const eventMinutes = eventDate.getMinutes();
               if (now.getHours() === eventHours && Math.abs(now.getMinutes() - eventMinutes) < 1) {
-                if (!prevNotifs.some(n => n.eventId === event._id && n.type === "onTime")) {
+                if (!prevNotifs.some((n) => n.eventId === event._id && n.type === "onTime")) {
                   newNotifs.push({
                     id: Date.now() + "_" + event._id + "_onTime",
                     eventId: event._id,
                     message: `Event "${event.title}" is starting now.`,
                     type: "onTime",
-                    seen: false
+                    seen: false,
                   });
                 }
               }
@@ -178,18 +254,18 @@ export default function Home() {
           return [...prevNotifs, ...newNotifs];
         });
 
-        setToasts(prevToasts => {
+        setToasts((prevToasts) => {
           const newToasts: any[] = [];
           events.forEach((event: any) => {
             const eventDate = new Date(event.date);
             if (now.toDateString() === eventDate.toDateString()) {
-              if (!prevToasts.some(t => t.eventId === event._id && t.type === "dayOf")) {
+              if (!prevToasts.some((t) => t.eventId === event._id && t.type === "dayOf")) {
                 newToasts.push({
                   id: Date.now() + "_" + event._id + "_dayOf",
                   eventId: event._id,
                   message: `Reminder: "${event.title}" is today.`,
                   type: "dayOf",
-                  seen: false
+                  seen: false,
                 });
               }
             }
@@ -216,19 +292,7 @@ export default function Home() {
   }, [toasts]);
 
   const handleDeleteNotification = (id: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
-  };
-
-  const userProfile = {
-    name: userData && userData.name ? userData.name : "User",
-    level: userData && userData.level ? userData.level : 1,
-    experience: userData && userData.experience ? userData.experience : 0,
-    wisdomPoints: computedWisdomPoints,
-    questionsAsked: userData && userData.questionsAsked ? userData.questionsAsked : 0,
-    questionsAnswered: userData && userData.questionsAnswered ? userData.questionsAnswered : 0,
-    myResult: overallResult,
-    classAverageResult: userData && userData.classAverageResult ? userData.classAverageResult : 0,
-    rank: userData && userData.rank ? userData.rank : 0,
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
   const handleDeleteMark = async (id: string) => {
@@ -456,16 +520,17 @@ export default function Home() {
                     {userData && userData.name ? userData.name : "User"}
                   </h2>
                   <p className="text-purple-600">
-                    Level {userProfile.level} Sage
+                    Level: {levelInfo.levelName}
                   </p>
                 </div>
               </div>
               <div className="mb-4">
                 <div className="flex justify-between mb-1">
                   <span>Experience</span>
-                  <span>{userProfile.experience}/100</span>
+                  <span>{userProfile.experience} pts</span>
                 </div>
-                <Progress value={userProfile.experience} className="h-2" />
+                <Progress value={levelInfo.progress} className="h-2" />
+                <p className="text-sm text-gray-500 mt-1">Progress towards {levels[levelInfo.levelNumber - 1].threshold} pts</p>
               </div>
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
@@ -520,7 +585,7 @@ export default function Home() {
                     <span>{sage.name}</span>
                   </div>
                   <span className="font-semibold text-sm text-gray-500">
-                    {sage.wisdomPoints} wisdom points
+                    {sage.rawWisdomPoints} wisdom points
                   </span>
                 </div>
               ))}

@@ -481,7 +481,7 @@ app.post("/api/profile/photo", authenticateToken, uploadHandler.single("photo"),
 });
 
 /** ========== TOP SAGES API (Updated) ========== **/
-// Compute top sages by aggregating subject marks and joining with User info.
+// Updated to sort by raw wisdom points (total subject marks)
 app.get("/api/top-sages", async (req, res) => {
   try {
     const topSages = await SubjectMark.aggregate([
@@ -506,11 +506,11 @@ app.get("/api/top-sages", async (req, res) => {
           rollno: "$userInfo.rollno",
           name: "$userInfo.name",
           photoUrl: "$userInfo.photoUrl",
-          wisdomPoints: "$totalMarks",
+          rawWisdomPoints: "$totalMarks",
           rank: "$userInfo.rank",
         },
       },
-      { $sort: { wisdomPoints: -1 } },
+      { $sort: { rawWisdomPoints: -1 } },
       { $limit: 3 },
     ]);
     res.json(topSages);
@@ -740,7 +740,7 @@ app.delete("/api/user/stats/subject/:id", authenticateToken, async (req, res) =>
 });
 
 /** ========== TOP SAGES API (Updated) ========== **/
-// Compute top sages by aggregating subject marks and joining with User info.
+// Updated logic: top sages are now sorted by raw wisdom points (total marks)
 app.get("/api/top-sages", async (req, res) => {
   try {
     const topSages = await SubjectMark.aggregate([
@@ -765,11 +765,11 @@ app.get("/api/top-sages", async (req, res) => {
           rollno: "$userInfo.rollno",
           name: "$userInfo.name",
           photoUrl: "$userInfo.photoUrl",
-          wisdomPoints: "$totalMarks",
+          rawWisdomPoints: "$totalMarks",
           rank: "$userInfo.rank",
         },
       },
-      { $sort: { wisdomPoints: -1 } },
+      { $sort: { rawWisdomPoints: -1 } },
       { $limit: 3 },
     ]);
     res.json(topSages);
@@ -804,9 +804,6 @@ app.get("/api/classResults", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-
-/** ========== QUIZ APIs ========== **/
-// (Quiz APIs as defined above remain unchanged)
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
