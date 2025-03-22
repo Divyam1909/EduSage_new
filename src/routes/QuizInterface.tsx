@@ -53,6 +53,10 @@ interface Attempt {
 }
 
 export default function QuizInterface() {
+  // User state and token retrieval
+  const [userData, setUserData] = useState<any>(null);
+  const token = localStorage.getItem("token");
+
   // Main view states
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
@@ -80,11 +84,32 @@ export default function QuizInterface() {
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [viewAttempts, setViewAttempts] = useState<boolean>(false);
 
+  // Fetch user profile similar to Home.tsx so that we have the correct identifier
+  useEffect(() => {
+    if (token) {
+      fetch("http://localhost:5000/profile", {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+        },
+      })
+        .then((res) => res.json())
+        .then((data) => setUserData(data))
+        .catch((err) => console.error("Error fetching profile:", err));
+    }
+  }, [token]);
+
   // Fetch quizzes and attempts on mount
   useEffect(() => {
     fetchQuizzes();
-    fetchAttempts();
   }, []);
+
+  // Fetch attempts using the logged-in user's roll number (if available)
+  useEffect(() => {
+    if (userData && userData.rollno) {
+      fetchAttempts();
+    }
+  }, [userData]);
 
   const fetchQuizzes = () => {
     fetch("http://localhost:5000/api/quizzes")
@@ -94,8 +119,8 @@ export default function QuizInterface() {
   };
 
   const fetchAttempts = () => {
-    // Replace "StudentUser" with the actual user identifier if available
-    fetch("http://localhost:5000/api/quizAttempts?user=StudentUser")
+    // Use the user's roll number instead of a hardcoded value
+    fetch(`http://localhost:5000/api/quizAttempts?user=${userData.rollno}`)
       .then((res) => res.json())
       .then((data) => setAttempts(data))
       .catch((err) => console.error("Error fetching attempts:", err));
@@ -136,7 +161,7 @@ export default function QuizInterface() {
 
   // When a quiz is selected from the list
   const handleSelectQuiz = (quiz: Quiz) => {
-    // Prevent reattempt if already attempted by StudentUser
+    // Prevent reattempt if already attempted by this user
     const attempted = attempts.find((a) => {
       const attemptedQuizId =
         (a.quizId && typeof a.quizId === "object" ? a.quizId._id : a.quizId) || "";
@@ -165,14 +190,18 @@ export default function QuizInterface() {
   };
 
   const submitQuizAttempt = () => {
-    if (!selectedQuiz) return;
+    if (!selectedQuiz || !userData) return;
     const timeTaken = Math.floor((Date.now() - startTime) / 1000);
-    const answersPayload = userAnswers.map((answer, index) => ({ questionId: index, answer: answer.trim() }));
+    const answersPayload = userAnswers.map((answer, index) => ({
+      questionId: index,
+      answer: answer.trim(),
+    }));
   
     fetch(`http://localhost:5000/api/quizzes/${selectedQuiz._id}/attempt`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user: "StudentUser", answers: answersPayload, timeTaken }),
+      // Use the logged-in user's roll number here
+      body: JSON.stringify({ user: userData.rollno, answers: answersPayload, timeTaken }),
     })
       .then((res) => res.json())
       .then((data) => {
@@ -666,7 +695,7 @@ export default function QuizInterface() {
             className="text-red-500 border-red-500 hover:bg-red-500 hover:text-white"
             onClick={() => {
               if (window.confirm("Are you sure you want to clear all attempts?")) {
-                fetch("http://localhost:5000/api/quizAttempts/clearAll?user=StudentUser", { method: "DELETE" })
+                fetch(`http://localhost:5000/api/quizAttempts/clearAll?user=${userData.rollno}`, { method: "DELETE" })
                   .then((res) => res.json())
                   .then(() => {
                     alert("All clearable attempts cleared successfully!");

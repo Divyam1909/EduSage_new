@@ -162,11 +162,11 @@ export default function EnhancedAskQuestion() {
                 <SelectValue placeholder="Select a subject" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="math">Mathematics</SelectItem>
-                <SelectItem value="science">Science</SelectItem>
-                <SelectItem value="history">History</SelectItem>
-                <SelectItem value="literature">Literature</SelectItem>
-                <SelectItem value="cs">Computer Science</SelectItem>
+                <SelectItem value="math">MES</SelectItem>
+                <SelectItem value="science">OS</SelectItem>
+                <SelectItem value="history">CN</SelectItem>
+                <SelectItem value="literature">SE</SelectItem>
+                <SelectItem value="cs">EM-4</SelectItem>
               </SelectContent>
             </Select>
           </div>
