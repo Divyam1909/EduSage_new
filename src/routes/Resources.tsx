@@ -145,7 +145,7 @@
           <nav>
             <ul className="space-y-2">
               <li>
-                <Link to="/Home">
+                <Link to="/home">
                 <Button
                   variant="ghost"
                   className="w-full justify-start hover:bg-white hover:text-black transition-colors"
@@ -156,35 +156,13 @@
                 </Link>
               </li>
               <li>
-                <Link to="/Resources">
+                <Link to="/resources">
                   <Button
                     variant="ghost"
                     className="w-full justify-start hover:bg-white hover:text-black transition-colors"
                   >
                     <FileText className="mr-2 h-4 w-4" />
                     Resources
-                  </Button>
-                </Link>
-              </li>
-              <li>
-                <Link to="/quiz">
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start hover:bg-white hover:text-black transition-colors"
-                  >
-                    <Quiz className="mr-2 h-4 w-4" />
-                    Quizzes
-                  </Button>
-                </Link>
-              </li>
-              <li>
-                <Link to="/profile">
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start hover:bg-white hover:text-black transition-colors"
-                  >
-                    <User className="mr-2 h-4 w-4" />
-                    Profile
                   </Button>
                 </Link>
               </li>
@@ -196,6 +174,17 @@
                   >
                     <Bookmark className="mr-2 h-4 w-4" />
                     Bookmarks
+                  </Button>
+                </Link>
+              </li>
+              <li>
+                <Link to="/quiz">
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                  >
+                    <Quiz className="mr-2 h-4 w-4" />
+                    Quizzes
                   </Button>
                 </Link>
               </li>
@@ -218,6 +207,17 @@
                   >
                     <Bot className="mr-2 h-4 w-4" />
                     AI Assistant
+                  </Button>
+                </Link>
+              </li>
+              <li>
+                <Link to="/profile">
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                  >
+                    <User className="mr-2 h-4 w-4" />
+                    Profile
                   </Button>
                 </Link>
               </li>

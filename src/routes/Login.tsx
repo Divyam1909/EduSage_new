@@ -37,6 +37,7 @@ export default function Login() {
       const data = await response.json();
   
       if (response.ok) {
+        // Store only the authentication token in localStorage
         localStorage.setItem("token", data.token);
         navigate("/home");
       } else {

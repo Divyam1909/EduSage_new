@@ -20,6 +20,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { useUser } from "@/context/UserContext";
 
 const previousQuestions = [
   "What is the difference between mitosis and meiosis?",
@@ -30,21 +31,21 @@ const previousQuestions = [
 
 export default function EnhancedAskQuestion() {
   const navigate = useNavigate();
+  const { refreshUserData } = useUser();
   const [title, setTitle] = useState("");
   const [details, setDetails] = useState("");
   const [subject, setSubject] = useState("");
-  const [wisdomPoints, setWisdomPoints] = useState(0); // New state for wisdom points
   const [attachments, setAttachments] = useState<File[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showDialog, setShowDialog] = useState(false);
   const [selectedQuestion, setSelectedQuestion] = useState("");
 
+  // Filter suggestions based on title input
   useEffect(() => {
     if (title.length > 2) {
-      const matchedQuestions = previousQuestions.filter((q) =>
+      setSuggestions(previousQuestions.filter(q => 
         q.toLowerCase().includes(title.toLowerCase())
-      );
-      setSuggestions(matchedQuestions);
+      ));
     } else {
       setSuggestions([]);
     }
@@ -53,10 +54,9 @@ export default function EnhancedAskQuestion() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files).filter(
-        (file) =>
-          file.type.startsWith("image/") || file.type === "application/pdf"
+        file => file.type.startsWith("image/") || file.type === "application/pdf"
       );
-      setAttachments((prev) => [...prev, ...newFiles]);
+      setAttachments(prev => [...prev, ...newFiles]);
     }
   };
 
@@ -75,31 +75,36 @@ export default function EnhancedAskQuestion() {
     alert(`Redirecting to the existing question: ${selectedQuestion}`);
   };
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Check if user is logged in
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("You must be logged in to ask a question.");
+      navigate("/login");
+      return;
+    }
+
     try {
       const res = await fetch("http://localhost:5000/api/questions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({
-          title,
-          details,
-          subject,
-          wisdomPoints, // Send the assigned wisdom points
-        }),
+        body: JSON.stringify({ title, details, subject }),
       });
+      
       if (res.ok) {
+        // Refresh user data to update questionsAsked count
+        await refreshUserData();
         alert("Question submitted successfully!");
-        // Reset form fields
         setTitle("");
         setDetails("");
         setSubject("");
-        setWisdomPoints(0);
         setAttachments([]);
-        // Redirect to Home page after submission
-        navigate("/Home");
+        navigate("/home");
       } else {
         alert("Error submitting question");
       }
@@ -162,27 +167,13 @@ export default function EnhancedAskQuestion() {
                 <SelectValue placeholder="Select a subject" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="math">MES</SelectItem>
-                <SelectItem value="science">OS</SelectItem>
-                <SelectItem value="history">CN</SelectItem>
-                <SelectItem value="literature">SE</SelectItem>
-                <SelectItem value="cs">EM-4</SelectItem>
+                <SelectItem value="MES">MES</SelectItem>
+                <SelectItem value="OS">OS</SelectItem>
+                <SelectItem value="CN">CN</SelectItem>
+                <SelectItem value="SE">SE</SelectItem>
+                <SelectItem value="EM-4">EM-4</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-          {/* New input for wisdom points */}
-          <div>
-            <Label htmlFor="wisdomPoints" className="text-purple-800">
-              Wisdom Points (optional)
-            </Label>
-            <Input
-              id="wisdomPoints"
-              type="number"
-              value={wisdomPoints}
-              onChange={(e) => setWisdomPoints(Number(e.target.value))}
-              placeholder="Assign wisdom points"
-              className="mt-1"
-            />
           </div>
           <div>
             <Label htmlFor="file-upload" className="text-purple-800">
@@ -193,9 +184,7 @@ export default function EnhancedAskQuestion() {
                 type="button"
                 variant="outline"
                 className="text-purple-600 border-purple-600 hover:bg-purple-100"
-                onClick={() =>
-                  document.getElementById("file-upload")?.click()
-                }
+                onClick={() => document.getElementById("file-upload")?.click()}
               >
                 <Upload className="h-4 w-4 mr-2" />
                 Upload Files

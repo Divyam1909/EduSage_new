@@ -24,8 +24,7 @@ export default function Component() {
   return (
     <div className="flex h-screen bg-purple-50">
       {/* Left Side Menu */}
-{/* Left Side Menu */}
-<aside className="w-64 bg-purple-800 text-white p-4">
+      <aside className="w-64 bg-purple-800 text-white p-4">
         <div className="flex items-center mb-8">
           <img src="/ES_logo2.png" alt="Your Logo" className="w-20 h-20 mr-2" />
           <h1 className="text-2xl font-bold">EduSage</h1>
@@ -44,35 +43,13 @@ export default function Component() {
               </Link>
             </li>
             <li>
-              <Link to="/Resources">
+              <Link to="/resources">
                 <Button
                   variant="ghost"
                   className="w-full justify-start hover:bg-white hover:text-black transition-colors"
                 >
                   <FileText className="mr-2 h-4 w-4" />
                   Resources
-                </Button>
-              </Link>
-            </li>
-            <li>
-              <Link to="/quiz">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
-                >
-                  <HelpCircle className="mr-2 h-4 w-4" />
-                  Quizzes
-                </Button>
-              </Link>
-            </li>
-            <li>
-              <Link to="/profile">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
-                >
-                  <User className="mr-2 h-4 w-4" />
-                  Profile
                 </Button>
               </Link>
             </li>
@@ -84,6 +61,17 @@ export default function Component() {
                 >
                   <Bookmark className="mr-2 h-4 w-4" />
                   Bookmarks
+                </Button>
+              </Link>
+            </li>
+            <li>
+              <Link to="/quiz">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
+                  <HelpCircle className="mr-2 h-4 w-4" />
+                  Quizzes
                 </Button>
               </Link>
             </li>
@@ -106,6 +94,17 @@ export default function Component() {
                 >
                   <Bot className="mr-2 h-4 w-4" />
                   AI Assistant
+                </Button>
+              </Link>
+            </li>
+            <li>
+              <Link to="/profile">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
+                  <User className="mr-2 h-4 w-4" />
+                  Profile
                 </Button>
               </Link>
             </li>

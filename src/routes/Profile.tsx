@@ -26,6 +26,7 @@ import {
   CartesianGrid, 
   ResponsiveContainer 
 } from "recharts";
+import { useUser } from "@/context/UserContext";
 
 interface SubjectMarks {
   _id?: string;
@@ -43,10 +44,10 @@ interface ClassResults {
 }
 
 export default function ProfilePage() {
+  const { userData, refreshUserData } = useUser();
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [showDetailedAnalysis, setShowDetailedAnalysis] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState<SubjectMarks | null>(null);
-  const [userData, setUserData] = useState<any>(null);
   const [subjectMarks, setSubjectMarks] = useState<SubjectMarks[]>([]);
   const [formData, setFormData] = useState<SubjectMarks>({
     subject: "",
@@ -55,84 +56,94 @@ export default function ProfilePage() {
     midSem: 0,
     endSem: 0,
   });
-  const [openSubjects, setOpenSubjects] = useState<{ [id: string]: boolean }>({});
-  const [classResults, setClassResults] = useState<ClassResults>({
-    classAverageResult: 0,
-    results: [],
-    totalStudents: 0,
-  });
-  const [profilePhoto, setProfilePhoto] = useState<string>(
-    "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png"
-  );
-  const token = localStorage.getItem("token");
-
-  // Reference for the hidden file input
+  const [editMode, setEditMode] = useState(false);
+  const [editID, setEditID] = useState<string | null>(null);
+  const [profilePhoto, setProfilePhoto] = useState("/placeholder-user.jpg");
+  const [classResults, setClassResults] = useState<ClassResults | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Compute overall result (percentage) for the current user based on their subject marks.
-  const myOverallResult =
-    subjectMarks.length > 0
-      ? subjectMarks.reduce(
-          (acc, curr) =>
-            acc + ((curr.cia1 + curr.cia2 + curr.midSem + curr.endSem) / 120) * 100,
-          0
-        ) / subjectMarks.length
-      : 0;
+  // Calculate total marks for each subject
+  const calculateTotalMarks = (mark: SubjectMarks) => {
+    return mark.cia1 + mark.cia2 + mark.midSem + mark.endSem;
+  };
 
-  // Prepare data for the overall result chart
-  const overallChartData = subjectMarks.map((mark) => ({
-    subject: mark.subject,
-    total: mark.cia1 + mark.cia2 + mark.midSem + mark.endSem,
-  }));
+  // Format percentage to 1 decimal place
+  const formatPercentage = (value: number) => {
+    return (value).toFixed(1) + "%";
+  };
 
-  // Determine current user's rank based on class results
-  const currentUserRank =
-    userData && classResults.results.length > 0
-      ? classResults.results.findIndex((r) => r._id === userData.rollno) + 1
-      : 0;
-  const studentsBeaten =
-    classResults.totalStudents && currentUserRank
-      ? classResults.totalStudents - currentUserRank
-      : 0;
+  // Calculate overall percentage
+  const overallPercentage = subjectMarks.length > 0
+    ? (subjectMarks.reduce((acc, mark) => acc + calculateTotalMarks(mark), 0) / (subjectMarks.length * 120)) * 100
+    : 0;
 
+  // Find user's rank in class results
+  const currentUserRank = userData && classResults?.results
+    ? classResults.results.findIndex(result => result._id === userData.rollno) + 1
+    : 0;
+
+  // Calculate students beat count
+  const studentsBeat = (classResults?.totalStudents && currentUserRank)
+    ? classResults.totalStudents - currentUserRank
+    : 0;
+
+  // Fetch subject marks and class results
   useEffect(() => {
-    if (token) {
-      // Fetch user profile
-      fetch("http://localhost:5000/profile", {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + token,
-        },
-      })
-        .then((response) => response.json())
-        .then((data) => {
-          setUserData(data);
-          if (data.photoUrl) {
-            setProfilePhoto(data.photoUrl);
+    const fetchSubjectMarksAndResults = async () => {
+      try {
+        // Get the token from local storage
+        const token = localStorage.getItem("token");
+        if (!token || !userData) {
+          return;
+        }
+
+        // Initialize form data from user data if available
+        if (userData) {
+          setFormData({
+            subject: "",
+            cia1: 0,
+            cia2: 0,
+            midSem: 0,
+            endSem: 0,
+          });
+
+          if (userData.photoUrl) {
+            setProfilePhoto(userData.photoUrl);
           }
-        })
-        .catch((error) => console.error("Error fetching profile:", error));
+        }
 
-      // Fetch subject marks for the current user
-      fetch("http://localhost:5000/api/user/stats/subject", {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + token,
-        },
-      })
-        .then((res) => res.json())
-        .then((marks) => setSubjectMarks(marks))
-        .catch((err) => console.error("Error fetching subject marks:", err));
+        // Fetch subject marks for the current user
+        const subjectMarksResponse = await fetch("http://localhost:5000/api/user/stats/subject", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
-      // Fetch class results from new endpoint
-      fetch("http://localhost:5000/api/classResults", {
-        headers: { "Content-Type": "application/json" },
-      })
-        .then((res) => res.json())
-        .then((data) => setClassResults(data))
-        .catch((err) => console.error("Error fetching class results:", err));
-    }
-  }, [token]);
+        if (subjectMarksResponse.ok) {
+          const marks = await subjectMarksResponse.json();
+          setSubjectMarks(marks);
+        } else {
+          console.error("Error fetching subject marks");
+        }
+
+        // Fetch class results from endpoint
+        const classResultsResponse = await fetch("http://localhost:5000/api/classResults", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (classResultsResponse.ok) {
+          const results = await classResultsResponse.json();
+          setClassResults(results);
+        } else {
+          console.error("Error fetching class results");
+        }
+      } catch (error) {
+        console.error("Error fetching data:", error);
+      }
+    };
+
+    fetchSubjectMarksAndResults();
+  }, [userData]);
 
   // Trigger file input click when edit icon is clicked
   const handleEditPhotoClick = () => {
@@ -140,24 +151,26 @@ export default function ProfilePage() {
   };
 
   // Handle file change and upload photo
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
+
     const file = e.target.files[0];
     const photoData = new FormData();
     photoData.append("photo", file);
+
     fetch("http://localhost:5000/api/profile/photo", {
       method: "POST",
-      headers: { Authorization: "Bearer " + token },
+      headers: { Authorization: "Bearer " + localStorage.getItem("token") },
       body: photoData,
     })
-      .then((res) => res.json())
+      .then((response) => response.json())
       .then((data) => {
         if (data.photoUrl) {
           setProfilePhoto(data.photoUrl);
-          setUserData((prev: any) => ({ ...prev, photoUrl: data.photoUrl }));
+          refreshUserData();
         }
       })
-      .catch((err) => console.error("Error uploading photo:", err));
+      .catch((error) => console.error("Error uploading photo:", error));
   };
 
   const handleViewAnalysisClick = () => {
@@ -169,7 +182,6 @@ export default function ProfilePage() {
     setShowDetailedAnalysis(false);
     setSelectedSubject(null);
     setFormData({ subject: "", cia1: 0, cia2: 0, midSem: 0, endSem: 0 });
-    setOpenSubjects({});
   };
 
   const handleSubjectClick = (mark: SubjectMarks) => {
@@ -179,7 +191,8 @@ export default function ProfilePage() {
 
   // Toggle dropdown for a subject's detailed view
   const toggleSubjectDropdown = (id: string) => {
-    setOpenSubjects((prev) => ({ ...prev, [id]: !prev[id] }));
+    setEditMode((prev) => !prev);
+    setEditID(id);
   };
 
   // Use dropdown for subject selection in form
@@ -213,13 +226,16 @@ export default function ProfilePage() {
     }
     fetch("http://localhost:5000/api/user/stats/subject", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + localStorage.getItem("token") },
       body: JSON.stringify(formData),
     })
       .then((res) => res.json())
       .then((newMark) => {
         setSubjectMarks([...subjectMarks, newMark]);
         setFormData({ subject: "", cia1: 0, cia2: 0, midSem: 0, endSem: 0 });
+        
+        // Refresh user data to show updated wisdom points
+        refreshUserData();
       })
       .catch((err) => console.error("Error adding mark:", err));
   };
@@ -228,7 +244,7 @@ export default function ProfilePage() {
     if (!selectedSubject || !selectedSubject._id) return;
     fetch(`http://localhost:5000/api/user/stats/subject/${selectedSubject._id}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + localStorage.getItem("token") },
       body: JSON.stringify(formData),
     })
       .then((res) => res.json())
@@ -238,6 +254,9 @@ export default function ProfilePage() {
         );
         setSelectedSubject(null);
         setFormData({ subject: "", cia1: 0, cia2: 0, midSem: 0, endSem: 0 });
+        
+        // Refresh user data to show updated wisdom points
+        refreshUserData();
       })
       .catch((err) => console.error("Error updating mark:", err));
   };
@@ -245,11 +264,14 @@ export default function ProfilePage() {
   const handleDeleteMark = (id: string) => {
     fetch(`http://localhost:5000/api/user/stats/subject/${id}`, {
       method: "DELETE",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + localStorage.getItem("token") },
     })
       .then((res) => res.json())
       .then(() => {
         setSubjectMarks(subjectMarks.filter((mark) => mark._id !== id));
+        
+        // Refresh user data to show updated wisdom points
+        refreshUserData();
       })
       .catch((err) => console.error("Error deleting mark:", err));
   };
@@ -273,26 +295,10 @@ export default function ProfilePage() {
               </Link>
             </li>
             <li>
-              <Link to="/Resources">
+              <Link to="/resources">
                 <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
                   <FileText className="mr-2 h-4 w-4" />
                   Resources
-                </Button>
-              </Link>
-            </li>
-            <li>
-              <Link to="/quiz">
-                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
-                  <Quiz className="mr-2 h-4 w-4" />
-                  Quizzes
-                </Button>
-              </Link>
-            </li>
-            <li>
-              <Link to="/profile">
-                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
-                  <User className="mr-2 h-4 w-4" />
-                  Profile
                 </Button>
               </Link>
             </li>
@@ -301,6 +307,14 @@ export default function ProfilePage() {
                 <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
                   <Bookmark className="mr-2 h-4 w-4" />
                   Bookmarks
+                </Button>
+              </Link>
+            </li>
+            <li>
+              <Link to="/quiz">
+                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
+                  <Quiz className="mr-2 h-4 w-4" />
+                  Quizzes
                 </Button>
               </Link>
             </li>
@@ -317,6 +331,14 @@ export default function ProfilePage() {
                 <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
                   <Bot className="mr-2 h-4 w-4" />
                   AI Assistant
+                </Button>
+              </Link>
+            </li>
+            <li>
+              <Link to="/profile">
+                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
+                  <User className="mr-2 h-4 w-4" />
+                  Profile
                 </Button>
               </Link>
             </li>
@@ -346,7 +368,7 @@ export default function ProfilePage() {
                 ref={fileInputRef}
                 className="hidden"
                 accept="image/*"
-                onChange={handlePhotoChange}
+                onChange={handlePhotoUpload}
               />
             </div>
             <div className="text-center mt-4">
@@ -393,6 +415,18 @@ export default function ProfilePage() {
                     : "Loading..."}
                 </p>
               </div>
+              <div>
+                <p className="font-semibold">Wisdom Points:</p>
+                <p>{userData ? userData.wisdomPoints : "Loading..."}</p>
+              </div>
+              <div>
+                <p className="font-semibold">Questions Asked:</p>
+                <p>{userData ? userData.questionsAsked : "Loading..."}</p>
+              </div>
+              <div>
+                <p className="font-semibold">Questions Answered:</p>
+                <p>{userData ? userData.questionsAnswered : "Loading..."}</p>
+              </div>
             </div>
           </div>
         </main>
@@ -420,27 +454,33 @@ export default function ProfilePage() {
             </DialogHeader>
             {!showDetailedAnalysis ? (
               <div className="grid gap-4 py-4">
+                <p className="text-sm text-gray-500 mb-2">
+                  Your wisdom points are automatically updated whenever you add subject marks, submit quizzes, or get answers approved.
+                </p>
                 <div className="space-y-2">
                   <h3 className="font-semibold">Overall Result</h3>
-                  {overallChartData.length > 0 ? (
+                  {subjectMarks.length > 0 ? (
                     <ResponsiveContainer width="100%" height={200}>
-                      <LineChart data={overallChartData}>
+                      <LineChart data={subjectMarks.map((mark) => ({
+                        subject: mark.subject,
+                        total: calculateTotalMarks(mark),
+                      }))}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="subject" />
                         <YAxis domain={[0, 120]} />
-                        <Tooltip />
-                        <Line type="monotone" dataKey="total" stroke="#6B46C1" strokeWidth={2} />
+                        <Tooltip formatter={(value) => `${value} / 120`} />
+                        <Line type="monotone" dataKey="total" stroke="#8884d8" />
                       </LineChart>
                     </ResponsiveContainer>
                   ) : (
-                    <p>No subject marks available</p>
+                    <p className="text-gray-500 italic">No data available</p>
                   )}
                   <div className="bg-purple-600 text-white text-sm font-bold text-center py-2 px-4 rounded w-28">
-                    {myOverallResult.toFixed(1)}%
+                    {formatPercentage(overallPercentage)}
                   </div>
                   <Button
-                    variant="default"
-                    className="mt-2 bg-purple-600 hover:bg-purple-700 text-white"
+                    variant="ghost"
+                    className="mt-2 text-purple-600"
                     onClick={handleViewAnalysisClick}
                   >
                     View Detailed Analysis
@@ -449,19 +489,19 @@ export default function ProfilePage() {
                 <div className="space-y-2">
                   <h3 className="font-semibold">Class Average Result</h3>
                   <ResponsiveContainer width="100%" height={200}>
-                    <LineChart data={[{ name: "Average", value: classResults.classAverageResult }]}>
+                    <LineChart data={[{ name: "Average", value: classResults?.classAverageResult || 0 }]}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" />
                       <YAxis domain={[0, 100]} />
-                      <Tooltip />
-                      <Line type="monotone" dataKey="value" stroke="#6B46C1" strokeWidth={2} />
+                      <Tooltip formatter={(value) => `${value}%`} />
+                      <Line type="monotone" dataKey="value" stroke="#8884d8" />
                     </LineChart>
                   </ResponsiveContainer>
                   <p className="text-sm text-right">
-                    {classResults.classAverageResult.toFixed(1)}%
+                    {formatPercentage(classResults?.classAverageResult || 0)}
                   </p>
                   <p className="text-sm text-purple-600 font-semibold">
-                    You beat {studentsBeaten} out of {classResults.totalStudents} students.
+                    You beat {studentsBeat} out of {classResults?.totalStudents || 0} students.
                   </p>
                 </div>
               </div>
@@ -477,7 +517,7 @@ export default function ProfilePage() {
                       >
                         <span className="font-semibold">{mark.subject}</span>
                       </button>
-                      {openSubjects[mark._id!] && (
+                      {editMode && editID === mark._id && (
                         <div className="p-4">
                           <p>CIA 1: {mark.cia1} / 20</p>
                           <p>CIA 2: {mark.cia2} / 20</p>
@@ -487,7 +527,7 @@ export default function ProfilePage() {
                             <Button variant="outline" onClick={() => handleSubjectClick(mark)}>
                               Edit
                             </Button>
-                            <Button variant="destructive" onClick={() => mark._id && handleDeleteMark(mark._id)}>
+                            <Button variant="destructive" onClick={() => handleDeleteMark(mark._id!)}>
                               Delete
                             </Button>
                           </div>

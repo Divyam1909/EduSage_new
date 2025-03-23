@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
   Dialog,
   DialogContent,
@@ -25,62 +25,11 @@ import {
   CheckCircle,
   XCircle,
 } from "lucide-react";
-
-// Helper to format date
-const formatDate = (date: Date) => {
-  return new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-};
-
-// Helper to compute initials from a name string
-const getInitials = (name: string) =>
-  name.split(" ").map((word) => word[0]).join("");
-
-// LEVELS CONFIGURATION
-const levels = [
-  { name: "Novice", threshold: 1000 },
-  { name: "Adept", threshold: 2500 },
-  { name: "Sage", threshold: 4000 },
-  { name: "Expert", threshold: 5500 },
-  { name: "Master", threshold: 7000 },
-];
-
-// Helper to calculate the current level and progress percentage
-function calculateLevel(experience: number) {
-  let levelName = levels[0].name;
-  let progress = 0;
-  let levelNumber = 1;
-  for (let i = 0; i < levels.length; i++) {
-    if (experience < levels[i].threshold) {
-      if (i === 0) {
-        progress = (experience / levels[i].threshold) * 100;
-        levelName = levels[i].name;
-        levelNumber = 1;
-      } else {
-        const prevThreshold = levels[i - 1].threshold;
-        const range = levels[i].threshold - prevThreshold;
-        progress = ((experience - prevThreshold) / range) * 100;
-        levelName = levels[i].name;
-        levelNumber = i + 1;
-      }
-      break;
-    } else if (i === levels.length - 1) {
-      // If experience exceeds the highest threshold, cap progress at 100%
-      progress = 100;
-      levelName = levels[i].name;
-      levelNumber = i + 1;
-    }
-  }
-  return { levelName, progress, levelNumber };
-}
+import { formatDate, getInitials, LEVELS, calculateLevel } from "@/lib/utils";
+import { useUser } from "@/context/UserContext";
 
 export default function Home() {
-  const [userData, setUserData] = useState<any>(null);
+  const { userData, isLoading, refreshUserData } = useUser();
   const [questions, setQuestions] = useState<any[]>([]);
   const [subjectMarks, setSubjectMarks] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -92,186 +41,243 @@ export default function Home() {
   const [showNotificationPanel, setShowNotificationPanel] = useState(false);
   // New state for class stats (class average and rank)
   const [classStats, setClassStats] = useState({ classAverageResult: 0, rank: 0 });
+  // State to track if more questions should be shown
+  const [showAllQuestions, setShowAllQuestions] = useState(false);
 
   const navigate = useNavigate();
+  const location = useLocation();
   const token = localStorage.getItem("token");
 
-  // Fetch logged-in user profile, top sages, and subject marks from backend
-  useEffect(() => {
-    if (token) {
-      // Fetch user profile
-      fetch("http://localhost:5000/profile", {
+  // Fetch top sages
+  const fetchTopSages = useCallback(async () => {
+    try {
+      const res = await fetch("http://localhost:5000/api/top-sages");
+      const data = await res.json();
+      setTopSages(data);
+    } catch (err) {
+      console.error("Error fetching top sages:", err);
+    }
+  }, []);
+
+  // Fetch subject marks
+  const fetchSubjectMarks = useCallback(async () => {
+    if (!token) return;
+    
+    try {
+      const res = await fetch("http://localhost:5000/api/user/stats/subject", {
         headers: {
           "Content-Type": "application/json",
-          Authorization: "Bearer " + token,
+          Authorization: `Bearer ${token}`,
         },
-      })
-        .then((res) => res.json())
-        .then((data) => setUserData(data))
-        .catch((err) => console.error("Error fetching profile:", err));
-
-      // Fetch top three sages
-      fetch("http://localhost:5000/api/top-sages")
-        .then((res) => res.json())
-        .then((data) => setTopSages(data))
-        .catch((err) => console.error("Error fetching top sages:", err));
-
-      // Fetch subject marks for current user
-      fetch("http://localhost:5000/api/user/stats/subject", {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + token,
-        },
-      })
-        .then((res) => res.json())
-        .then((marks) => setSubjectMarks(marks))
-        .catch((err) => console.error("Error fetching subject marks:", err));
+      });
+      const marks = await res.json();
+      setSubjectMarks(marks);
+    } catch (err) {
+      console.error("Error fetching subject marks:", err);
     }
   }, [token]);
 
-  // Fetch class results for calculating class average and rank
-  useEffect(() => {
-    if (token && userData) {
-      fetch("http://localhost:5000/api/classResults")
-        .then((res) => res.json())
-        .then((data) => {
-          // data.results is assumed to be sorted descending by overall result
-          const userRollno = userData.rollno;
-          let rank = 0;
-          data.results.forEach((result: any, index: number) => {
-            if (result._id === userRollno) {
-              rank = index + 1;
-            }
-          });          
-          setClassStats({ classAverageResult: data.classAverageResult, rank });
-        })
-        .catch((err) => console.error("Error fetching class results:", err));
-    }
-  }, [token, userData]);
-
   // Fetch questions from backend
-  const fetchQuestions = async () => {
+  const fetchQuestions = useCallback(async () => {
     try {
       const response = await axios.get("http://localhost:5000/api/questions");
       setQuestions(response.data);
     } catch (error) {
       console.error("Error fetching questions!", error);
     }
-  };
-
-  useEffect(() => {
-    fetchQuestions();
   }, []);
+
+  // Fetch class results
+  const fetchClassResults = useCallback(async () => {
+    if (!token || !userData) return;
+    
+    try {
+      const res = await fetch("http://localhost:5000/api/classResults");
+      const data = await res.json();
+      
+      // Calculate user's rank
+      const userRollno = userData.rollno;
+      let rank = 0;
+      data.results.forEach((result: any, index: number) => {
+        if (result._id === userRollno) {
+          rank = index + 1;
+        }
+      });
+      
+      setClassStats({ 
+        classAverageResult: data.classAverageResult, 
+        rank 
+      });
+    } catch (err) {
+      console.error("Error fetching class results:", err);
+    }
+  }, [token, userData]);
+
+  // Load all data when component mounts or location changes
+  useEffect(() => {
+    // Refresh user data if needed from global context
+    refreshUserData();
+    
+    // Fetch other data
+    fetchTopSages();
+    fetchSubjectMarks();
+    fetchQuestions();
+  }, [refreshUserData, fetchTopSages, fetchSubjectMarks, fetchQuestions, location.key]);
+
+  // Fetch class results when user data is available
+  useEffect(() => {
+    if (userData) {
+      fetchClassResults();
+    }
+  }, [userData, fetchClassResults]);
 
   // Filter questions based on search query
   const filteredQuestions = questions.filter((q) =>
     q.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Compute wisdom points as the sum of marks from all subjects
-  const computedWisdomPoints = subjectMarks.reduce(
-    (acc, mark) => acc + (mark.cia1 + mark.cia2 + mark.midSem + mark.endSem),
-    0
-  );
+  // Limit displayed questions to first 5 unless showAllQuestions is true
+  const displayedQuestions = showAllQuestions 
+    ? filteredQuestions 
+    : filteredQuestions.slice(0, 5);
 
   // Compute overall result as an average percentage (each subject out of 120)
-  const overallResult =
-    subjectMarks.length > 0
-      ? (subjectMarks.reduce(
-          (acc, mark) => acc + (mark.cia1 + mark.cia2 + mark.midSem + mark.endSem),
-          0
-        ) / (subjectMarks.length * 120)) * 100
-      : 0;
+  const overallResult = subjectMarks.length > 0
+    ? (subjectMarks.reduce(
+        (acc, mark) => acc + (mark.cia1 + mark.cia2 + mark.midSem + mark.endSem),
+        0
+      ) / (subjectMarks.length * 120)) * 100
+    : 0;
 
-  // Calculate level info based on experience
-  const experience = computedWisdomPoints;
+  // Calculate level info based on experience (using actual wisdom points from user model)
+  const experience = userData ? userData.wisdomPoints : 0;
   const levelInfo = calculateLevel(experience);
 
+  // Build user profile object
   const userProfile = {
-    name: userData && userData.name ? userData.name : "User",
-    // Use computed experience and level info instead of static level number
-    experience: experience,
-    wisdomPoints: computedWisdomPoints,
-    questionsAsked: userData && userData.questionsAsked ? userData.questionsAsked : 0,
-    questionsAnswered: userData && userData.questionsAnswered ? userData.questionsAnswered : 0,
+    name: userData?.name || "User",
+    experience,
+    wisdomPoints: userData?.wisdomPoints || 0,
+    questionsAsked: userData?.questionsAsked || 0,
+    questionsAnswered: userData?.questionsAnswered || 0,
     myResult: overallResult,
     classAverageResult: classStats.classAverageResult,
     rank: classStats.rank,
   };
 
-  // Notification polling: Check calendar events every minute and add notifications accordingly
+  // Notification polling: Optimize event checking
   useEffect(() => {
     const checkNotifications = async () => {
       try {
+        // First, check our API for pending notifications
+        const pendingRes = await axios.get("http://localhost:5000/api/notifications/pending");
+        if (pendingRes.data && pendingRes.data.length > 0) {
+          // Process any pending notifications from the server
+          pendingRes.data.forEach((notification: any) => {
+            setNotifications(prev => {
+              // Check if this notification already exists
+              const exists = prev.some(n => 
+                n.id === notification.id || 
+                (n.eventId === notification.eventId && n.type === notification.type)
+              );
+              if (!exists) {
+                // Add the notification with a unique ID and mark as unseen
+                return [...prev, {
+                  ...notification,
+                  id: notification.id || Date.now() + "_" + notification.eventId + "_" + notification.type,
+                  seen: false
+                }];
+              }
+              return prev;
+            });
+            
+            // Also add to toasts for immediate visibility
+            setToasts(prev => {
+              const exists = prev.some(t => 
+                t.id === notification.id || 
+                (t.eventId === notification.eventId && t.type === notification.type)
+              );
+              if (!exists) {
+                return [...prev, {
+                  ...notification,
+                  id: notification.id || Date.now() + "_" + notification.eventId + "_" + notification.type,
+                  seen: false
+                }];
+              }
+              return prev;
+            });
+          });
+        }
+        
+        // Then do the regular check for events as a fallback
         const res = await axios.get("http://localhost:5000/api/events");
         const events = res.data;
         const now = new Date();
 
-        setNotifications((prevNotifs) => {
-          const newNotifs: any[] = [];
+        // Process notifications in a more concise way
+        const processEvents = (events: any[], updateFn: Function, notifType: string) => {
+          const newItems: any[] = [];
+          
           events.forEach((event: any) => {
             const eventDate = new Date(event.date);
-            const dayBefore = new Date(eventDate);
-            dayBefore.setDate(eventDate.getDate() - 1);
-            if (now.toDateString() === dayBefore.toDateString()) {
-              if (!prevNotifs.some((n) => n.eventId === event._id && n.type === "dayBefore")) {
-                newNotifs.push({
-                  id: Date.now() + "_" + event._id + "_dayBefore",
-                  eventId: event._id,
-                  message: `Reminder: "${event.title}" is tomorrow.`,
-                  type: "dayBefore",
-                  seen: false,
-                });
-              }
+            const isToday = now.toDateString() === eventDate.toDateString();
+            const isTomorrow = (() => {
+              const dayBefore = new Date(eventDate);
+              dayBefore.setDate(eventDate.getDate() - 1);
+              return now.toDateString() === dayBefore.toDateString();
+            })();
+            
+            // Add "day before" notification
+            if (isTomorrow && notifType === 'notifications' && !event.notificationStatus?.dayBeforeSent) {
+              newItems.push({
+                id: Date.now() + "_" + event._id + "_dayBefore",
+                eventId: event._id,
+                message: `Reminder: "${event.title}" is tomorrow.`,
+                type: "dayBefore",
+                seen: false,
+              });
             }
-            if (now.toDateString() === eventDate.toDateString()) {
-              if (!prevNotifs.some((n) => n.eventId === event._id && n.type === "dayOf")) {
-                newNotifs.push({
-                  id: Date.now() + "_" + event._id + "_dayOf",
-                  eventId: event._id,
-                  message: `Reminder: "${event.title}" is today.`,
-                  type: "dayOf",
-                  seen: false,
-                });
-              }
+            
+            // Add "day of" notification
+            if (isToday && !event.notificationStatus?.dayOfSent) {
+              newItems.push({
+                id: Date.now() + "_" + event._id + "_dayOf",
+                eventId: event._id,
+                message: `Reminder: "${event.title}" is today.`,
+                type: "dayOf",
+                seen: false,
+              });
             }
-            if (event.time) {
-              const eventHours = eventDate.getHours();
-              const eventMinutes = eventDate.getMinutes();
-              if (now.getHours() === eventHours && Math.abs(now.getMinutes() - eventMinutes) < 1) {
-                if (!prevNotifs.some((n) => n.eventId === event._id && n.type === "onTime")) {
-                  newNotifs.push({
-                    id: Date.now() + "_" + event._id + "_onTime",
-                    eventId: event._id,
-                    message: `Event "${event.title}" is starting now.`,
-                    type: "onTime",
-                    seen: false,
-                  });
-                }
-              }
-            }
-          });
-          return [...prevNotifs, ...newNotifs];
-        });
-
-        setToasts((prevToasts) => {
-          const newToasts: any[] = [];
-          events.forEach((event: any) => {
-            const eventDate = new Date(event.date);
-            if (now.toDateString() === eventDate.toDateString()) {
-              if (!prevToasts.some((t) => t.eventId === event._id && t.type === "dayOf")) {
-                newToasts.push({
-                  id: Date.now() + "_" + event._id + "_dayOf",
+            
+            // Add "starting now" notification for events with time
+            if (event.time && notifType === 'notifications' && !event.notificationStatus?.atTimeSent) {
+              const [hours, minutes] = event.time.split(':').map(Number);
+              const eventTime = new Date(eventDate);
+              eventTime.setHours(hours, minutes, 0, 0);
+              
+              if (isToday && now >= eventTime && now <= new Date(eventTime.getTime() + 60000)) {
+                newItems.push({
+                  id: Date.now() + "_" + event._id + "_onTime",
                   eventId: event._id,
-                  message: `Reminder: "${event.title}" is today.`,
-                  type: "dayOf",
+                  message: `Event "${event.title}" is starting now.`,
+                  type: "onTime",
                   seen: false,
                 });
               }
             }
           });
-          return [...prevToasts, ...newToasts];
-        });
+          
+          // Update state with new items, avoiding duplicates
+          updateFn((prev: any[]) => {
+            const existing = new Set(prev.map(item => `${item.eventId}_${item.type}`));
+            const filtered = newItems.filter(item => !existing.has(`${item.eventId}_${item.type}`));
+            return [...prev, ...filtered];
+          });
+        };
+        
+        // Process notifications and toasts
+        processEvents(events, setNotifications, 'notifications');
+        processEvents(events, setToasts, 'toasts');
       } catch (error) {
         console.error("Error checking notifications:", error);
       }
@@ -282,32 +288,34 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
+  // Auto-clear toasts after 5 seconds
   useEffect(() => {
     if (toasts.length > 0) {
-      const timer = setTimeout(() => {
-        setToasts([]);
-      }, 5000);
+      const timer = setTimeout(() => setToasts([]), 5000);
       return () => clearTimeout(timer);
     }
   }, [toasts]);
-
+  
+  // Handler functions
   const handleDeleteNotification = (id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    setNotifications(prev => prev.filter(n => n.id !== id));
   };
 
   const handleDeleteMark = async (id: string) => {
+    if (!token || !id) return;
+    
     try {
       await axios.delete(`http://localhost:5000/api/user/stats/subject/${id}`, {
-        headers: { Authorization: "Bearer " + token },
+        headers: { Authorization: `Bearer ${token}` },
       });
-      setSubjectMarks(subjectMarks.filter((mark) => mark._id !== id));
+      setSubjectMarks(prev => prev.filter(mark => mark._id !== id));
     } catch (error) {
       console.error("Error deleting subject mark!", error);
     }
   };
 
   const toggleSubjectDropdown = (id: string) => {
-    setOpenSubjects((prev) => ({
+    setOpenSubjects(prev => ({
       ...prev,
       [id]: !prev[id],
     }));
@@ -324,44 +332,24 @@ export default function Home() {
         <nav>
           <ul className="space-y-2">
             <li>
-              <Button
-                variant="ghost"
-                className="w-full justify-start hover:bg-white hover:text-black transition-colors"
-              >
-                <Users className="mr-2 h-4 w-4" />
-                Discussion Forum
-              </Button>
+              <Link to="/home">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
+                  <Users className="mr-2 h-4 w-4" />
+                  Discussion Forum
+                </Button>
+              </Link>
             </li>
             <li>
-              <Link to="/Resources">
+              <Link to="/resources">
                 <Button
                   variant="ghost"
                   className="w-full justify-start hover:bg-white hover:text-black transition-colors"
                 >
                   <FileText className="mr-2 h-4 w-4" />
                   Resources
-                </Button>
-              </Link>
-            </li>
-            <li>
-              <Link to="/quiz">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
-                >
-                  <Quiz className="mr-2 h-4 w-4" />
-                  Quizzes
-                </Button>
-              </Link>
-            </li>
-            <li>
-              <Link to="/profile">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
-                >
-                  <User className="mr-2 h-4 w-4" />
-                  Profile
                 </Button>
               </Link>
             </li>
@@ -373,6 +361,17 @@ export default function Home() {
                 >
                   <Bookmark className="mr-2 h-4 w-4" />
                   Bookmarks
+                </Button>
+              </Link>
+            </li>
+            <li>
+              <Link to="/quiz">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
+                  <Quiz className="mr-2 h-4 w-4" />
+                  Quizzes
                 </Button>
               </Link>
             </li>
@@ -395,6 +394,17 @@ export default function Home() {
                 >
                   <Bot className="mr-2 h-4 w-4" />
                   AI Assistant
+                </Button>
+              </Link>
+            </li>
+            <li>
+              <Link to="/profile">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
+                  <User className="mr-2 h-4 w-4" />
+                  Profile
                 </Button>
               </Link>
             </li>
@@ -458,7 +468,7 @@ export default function Home() {
           <div className="w-1/2 flex flex-col">
             <h2 className="text-2xl font-bold mb-4">Recent Questions</h2>
             <div className="overflow-y-auto mb-4">
-              {filteredQuestions.map((question) => (
+              {displayedQuestions.map((question) => (
                 <Link key={question._id} to={`/solutions/${question._id}`}>
                   <div className="bg-white rounded-lg shadow-md p-4 mb-4 cursor-pointer hover:shadow-xl transition-shadow">
                     <div className="flex justify-between items-center mb-2">
@@ -497,8 +507,14 @@ export default function Home() {
                 </Link>
               ))}
             </div>
-            <Button variant="outline" className="flex items-center justify-center">
-              <h3 className="text-lg font-semibold">More questions...</h3>
+            <Button 
+              variant="outline" 
+              className="flex items-center justify-center"
+              onClick={() => setShowAllQuestions(!showAllQuestions)}
+            >
+              <h3 className="text-lg font-semibold">
+                {showAllQuestions ? "Show Less" : "More questions..."}
+              </h3>
             </Button>
           </div>
 
@@ -530,12 +546,15 @@ export default function Home() {
                   <span>{userProfile.experience} pts</span>
                 </div>
                 <Progress value={levelInfo.progress} className="h-2" />
-                <p className="text-sm text-gray-500 mt-1">Progress towards {levels[levelInfo.levelNumber - 1].threshold} pts</p>
+                <p className="text-sm text-gray-500 mt-1">Progress towards {LEVELS[levelInfo.levelNumber - 1].threshold} pts</p>
               </div>
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
                   <p className="font-semibold">{userProfile.wisdomPoints}</p>
                   <p className="text-sm text-gray-500">Wisdom Points</p>
+                  <div className="text-xs text-gray-500 mt-1">
+                    (Subject marks + Quiz points + Approved answers) 
+                  </div>
                 </div>
                 <div>
                   <p className="font-semibold">{userProfile.questionsAsked}</p>
@@ -606,7 +625,7 @@ export default function Home() {
                     variant="ghost"
                     onClick={() => {
                       userData.showDetailedAnalysis = false;
-                      setUserData({ ...userData });
+                      refreshUserData();
                     }}
                     className="ml-4 text-sm text-purple-600"
                   >
@@ -629,7 +648,7 @@ export default function Home() {
                   className="mt-2 text-purple-600"
                   onClick={() => {
                     userData.showDetailedAnalysis = true;
-                    setUserData({ ...userData });
+                    refreshUserData();
                   }}
                 >
                   View Detailed Analysis
@@ -667,7 +686,7 @@ export default function Home() {
                             variant="outline"
                             onClick={() => {
                               userData.showDetailedAnalysis = false;
-                              setUserData({ ...userData });
+                              refreshUserData();
                             }}
                           >
                             Edit

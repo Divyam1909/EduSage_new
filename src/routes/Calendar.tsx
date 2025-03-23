@@ -24,6 +24,7 @@ import {
 import { BookOpen } from "lucide-react";
 import { Link } from "react-router-dom";
 import axios from "axios";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface Event {
   id?: string;
@@ -31,6 +32,16 @@ interface Event {
   date: string; // ISO string including time if provided
   time?: string;
   details?: string;
+  notifications?: {
+    dayBefore: boolean;
+    dayOf: boolean;
+    atTime: boolean;
+  };
+  notificationStatus?: {
+    dayBeforeSent: boolean;
+    dayOfSent: boolean;
+    atTimeSent: boolean;
+  };
 }
 
 export default function CalendarComponent() {
@@ -47,12 +58,20 @@ export default function CalendarComponent() {
     date: "",
     time: "",
     details: "",
+    notifications: {
+      dayBefore: true,
+      dayOf: true,
+      atTime: true,
+    }
   });
 
   // New states for PDF upload
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  
+  // New state for PDF events deletion
+  const [deletingPdfEvents, setDeletingPdfEvents] = useState(false);
 
   const getTimeLeft = (eventDate: Date) => {
     const now = new Date();
@@ -66,16 +85,7 @@ export default function CalendarComponent() {
 
   // Fetch events from the backend
   useEffect(() => {
-    axios
-      .get("http://localhost:5000/api/events")
-      .then((response) => {
-        const transformed = response.data.map((ev: any) => ({
-          ...ev,
-          id: ev._id,
-        }));
-        setEvents(transformed);
-      })
-      .catch((error) => console.error("Error fetching events:", error));
+    refreshEvents();
   }, []);
 
   const refreshEvents = () => {
@@ -97,9 +107,23 @@ export default function CalendarComponent() {
       return;
     }
     try {
-      const timePart = newEvent.time ? "T" + newEvent.time : "T00:00:00";
-      const formattedDate = new Date(newEvent.date + timePart).toISOString();
-      const eventToAdd = { ...newEvent, date: formattedDate };
+      // Correctly format the date with time
+      let formattedDate;
+      if (newEvent.time) {
+        formattedDate = `${newEvent.date}T${newEvent.time}:00`;
+      } else {
+        formattedDate = `${newEvent.date}T00:00:00`;
+      }
+      
+      const eventToAdd = { 
+        ...newEvent, 
+        date: formattedDate,
+        // Only send at-time notifications if time is provided
+        notifications: {
+          ...newEvent.notifications,
+          atTime: newEvent.time ? newEvent.notifications.atTime : false
+        }
+      };
       const response = await axios.post(
         "http://localhost:5000/api/events",
         eventToAdd
@@ -107,7 +131,17 @@ export default function CalendarComponent() {
       const addedEvent = { ...response.data, id: response.data._id };
       setEvents((prevEvents) => [...prevEvents, addedEvent]);
       setIsAddEventModalOpen(false);
-      setNewEvent({ title: "", date: "", time: "", details: "" });
+      setNewEvent({ 
+        title: "", 
+        date: "", 
+        time: "", 
+        details: "",
+        notifications: {
+          dayBefore: true,
+          dayOf: true,
+          atTime: true,
+        }
+      });
       setIsEditMode(false);
     } catch (error) {
       console.error("Error adding event:", error);
@@ -120,9 +154,23 @@ export default function CalendarComponent() {
       return;
     }
     try {
-      const timePart = newEvent.time ? "T" + newEvent.time : "T00:00:00";
-      const formattedDate = new Date(newEvent.date + timePart).toISOString();
-      const eventToUpdate = { ...newEvent, date: formattedDate };
+      // Correctly format the date with time
+      let formattedDate;
+      if (newEvent.time) {
+        formattedDate = `${newEvent.date}T${newEvent.time}:00`;
+      } else {
+        formattedDate = `${newEvent.date}T00:00:00`;
+      }
+      
+      const eventToUpdate = { 
+        ...newEvent, 
+        date: formattedDate,
+        // Only send at-time notifications if time is provided
+        notifications: {
+          ...newEvent.notifications,
+          atTime: newEvent.time ? newEvent.notifications.atTime : false
+        }
+      };
       const response = await axios.put(
         `http://localhost:5000/api/events/${selectedEvent.id}`,
         eventToUpdate
@@ -132,7 +180,17 @@ export default function CalendarComponent() {
         prevEvents.map((ev) => (ev.id === selectedEvent.id ? updatedEvent : ev))
       );
       setIsAddEventModalOpen(false);
-      setNewEvent({ title: "", date: "", time: "", details: "" });
+      setNewEvent({ 
+        title: "", 
+        date: "", 
+        time: "", 
+        details: "",
+        notifications: {
+          dayBefore: true,
+          dayOf: true,
+          atTime: true,
+        }
+      });
       setSelectedEvent(null);
       setIsEditMode(false);
     } catch (error) {
@@ -163,6 +221,27 @@ export default function CalendarComponent() {
     }
   };
 
+  // Function to delete all PDF-imported events
+  const handleDeletePdfEvents = async () => {
+    if (!confirm('Are you sure you want to delete all PDF-imported events? This action cannot be undone.')) {
+      return;
+    }
+    
+    setDeletingPdfEvents(true);
+    try {
+      const response = await axios.delete('http://localhost:5000/api/calendar/pdf-events');
+      alert(response.data.message);
+      // Refresh events after deletion
+      refreshEvents();
+    } catch (error) {
+      console.error('Error deleting PDF events:', error);
+      alert('Failed to delete PDF events');
+    } finally {
+      setDeletingPdfEvents(false);
+    }
+  };
+
+  // Update the handleUploadPDF function with better error handling
   const handleUploadPDF = async () => {
     if (!selectedFile) return;
     setUploading(true);
@@ -174,19 +253,23 @@ export default function CalendarComponent() {
         "http://localhost:5000/api/calendar/upload",
         formData
       );
-      alert(response.data.message);
+      const eventCount = response.data.events?.length || 0;
+      alert(`Success! ${eventCount} events were imported from the PDF.`);
       setShowUploadModal(false);
       setSelectedFile(null);
       refreshEvents();
     } catch (error) {
       console.error("Error uploading PDF:", error);
-      alert("Error uploading PDF");
+      alert(`Error uploading PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setUploading(false);
     }
-    setUploading(false);
   };
 
   useEffect(() => {
-    const timer = setInterval(() => setCurrentDateTime(new Date()), 1000);
+    const timer = setInterval(() => {
+      setCurrentDateTime(new Date());
+    }, 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -231,35 +314,13 @@ export default function CalendarComponent() {
               </Link>
             </li>
             <li>
-              <Link to="/Resources">
+              <Link to="/resources">
                 <Button
                   variant="ghost"
                   className="w-full justify-start hover:bg-white hover:text-black transition-colors"
                 >
                   <FileText className="mr-2 h-4 w-4" />
                   Resources
-                </Button>
-              </Link>
-            </li>
-            <li>
-              <Link to="/quiz">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
-                >
-                  <Quiz className="mr-2 h-4 w-4" />
-                  Quizzes
-                </Button>
-              </Link>
-            </li>
-            <li>
-              <Link to="/profile">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
-                >
-                  <User className="mr-2 h-4 w-4" />
-                  Profile
                 </Button>
               </Link>
             </li>
@@ -271,6 +332,17 @@ export default function CalendarComponent() {
                 >
                   <Bookmark className="mr-2 h-4 w-4" />
                   Bookmarks
+                </Button>
+              </Link>
+            </li>
+            <li>
+              <Link to="/quiz">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
+                  <Quiz className="mr-2 h-4 w-4" />
+                  Quizzes
                 </Button>
               </Link>
             </li>
@@ -293,6 +365,17 @@ export default function CalendarComponent() {
                 >
                   <Bot className="mr-2 h-4 w-4" />
                   AI Assistant
+                </Button>
+              </Link>
+            </li>
+            <li>
+              <Link to="/profile">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
+                  <User className="mr-2 h-4 w-4" />
+                  Profile
                 </Button>
               </Link>
             </li>
@@ -320,15 +403,19 @@ export default function CalendarComponent() {
               day: "numeric",
             })}
           </p>
+          <p className="text-sm text-gray-500 mt-2">
+            Event notifications are available in the Home page notification panel. 
+            You'll be notified before events and when they start.
+          </p>
         </div>
 
-        {/* Top Buttons: Add Event & Upload Academic Calendar */}
+        {/* Top Buttons: Add Event, Upload & Delete PDF Events */}
         <div className="flex items-center mb-4 space-x-4">
           <Button
             variant="outline"
             onClick={() => {
               // Reset newEvent state when manually adding a new event
-              setNewEvent({ title: "", date: "", time: "", details: "" });
+              setNewEvent({ title: "", date: "", time: "", details: "", notifications: { dayBefore: true, dayOf: true, atTime: true } });
               setIsAddEventModalOpen(true);
               setIsEditMode(false);
             }}
@@ -345,15 +432,29 @@ export default function CalendarComponent() {
             <FileText className="w-6 h-6 text-purple-600" />
             <span>Upload Academic Calendar</span>
           </Button>
+          <Button
+            variant="outline"
+            onClick={handleDeletePdfEvents}
+            disabled={deletingPdfEvents}
+            className="flex items-center space-x-2"
+          >
+            <FileText className="w-6 h-6 text-red-600" />
+            <span>{deletingPdfEvents ? "Deleting..." : "Delete PDF Events"}</span>
+          </Button>
         </div>
 
         {/* Month and Year Selection */}
         <div className="flex items-center justify-between mb-4">
           <Button
             variant="outline"
-            onClick={() =>
-              setSelectedMonth((prev) => (prev === 0 ? 11 : prev - 1))
-            }
+            onClick={() => {
+              if (selectedMonth === 0) {
+                setSelectedMonth(11);
+                setSelectedYear(selectedYear - 1);
+              } else {
+                setSelectedMonth(selectedMonth - 1);
+              }
+            }}
           >
             <ChevronLeft />
           </Button>
@@ -365,9 +466,14 @@ export default function CalendarComponent() {
           </h2>
           <Button
             variant="outline"
-            onClick={() =>
-              setSelectedMonth((prev) => (prev === 11 ? 0 : prev + 1))
-            }
+            onClick={() => {
+              if (selectedMonth === 11) {
+                setSelectedMonth(0);
+                setSelectedYear(selectedYear + 1);
+              } else {
+                setSelectedMonth(selectedMonth + 1);
+              }
+            }}
           >
             <ChevronRight />
           </Button>
@@ -400,11 +506,25 @@ export default function CalendarComponent() {
                     handleEventClick(dayEvents[0]);
                   } else {
                     // If no event exists, pre-fill the date and open the add event modal.
+                    const dateObj = new Date(selectedYear, selectedMonth, i + 1);
+                    
+                    // Format date as YYYY-MM-DD with timezone handling
+                    // Use the date parts directly instead of toISOString() to avoid timezone issues
+                    const year = dateObj.getFullYear();
+                    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+                    const day = String(dateObj.getDate()).padStart(2, '0');
+                    const formattedDate = `${year}-${month}-${day}`;
+                    
                     setNewEvent({
                       title: "",
-                      date: date.toISOString().substring(0, 10),
+                      date: formattedDate,
                       time: "",
                       details: "",
+                      notifications: {
+                        dayBefore: true,
+                        dayOf: true,
+                        atTime: true,
+                      }
                     });
                     setIsAddEventModalOpen(true);
                     setIsEditMode(false);
@@ -461,12 +581,73 @@ export default function CalendarComponent() {
             />
             <Textarea
               placeholder="Event Details (optional)"
-              className="mb-2"
+              className="mb-4"
               value={newEvent.details}
               onChange={(e) =>
                 setNewEvent({ ...newEvent, details: e.target.value })
               }
             />
+            
+            {/* Notification Settings */}
+            <div className="mb-4 border border-purple-100 rounded-md p-2">
+              <h3 className="font-semibold mb-2 text-purple-800">Notification Settings</h3>
+              <div className="flex items-center mb-2">
+                <Checkbox 
+                  id="day-before"
+                  checked={newEvent.notifications.dayBefore}
+                  onCheckedChange={(checked) => 
+                    setNewEvent({
+                      ...newEvent,
+                      notifications: {
+                        ...newEvent.notifications,
+                        dayBefore: checked as boolean
+                      }
+                    })
+                  }
+                />
+                <label htmlFor="day-before" className="ml-2 text-sm">
+                  Notify one day before
+                </label>
+              </div>
+              <div className="flex items-center mb-2">
+                <Checkbox 
+                  id="day-of"
+                  checked={newEvent.notifications.dayOf}
+                  onCheckedChange={(checked) => 
+                    setNewEvent({
+                      ...newEvent,
+                      notifications: {
+                        ...newEvent.notifications,
+                        dayOf: checked as boolean
+                      }
+                    })
+                  }
+                />
+                <label htmlFor="day-of" className="ml-2 text-sm">
+                  Notify at 12:00 AM on the day
+                </label>
+              </div>
+              <div className="flex items-center">
+                <Checkbox 
+                  id="at-time"
+                  checked={newEvent.time ? newEvent.notifications.atTime : false}
+                  disabled={!newEvent.time}
+                  onCheckedChange={(checked) => 
+                    setNewEvent({
+                      ...newEvent,
+                      notifications: {
+                        ...newEvent.notifications,
+                        atTime: checked as boolean
+                      }
+                    })
+                  }
+                />
+                <label htmlFor="at-time" className={`ml-2 text-sm ${!newEvent.time ? 'text-gray-400' : ''}`}>
+                  Notify at event time {!newEvent.time && "(requires setting event time)"}
+                </label>
+              </div>
+            </div>
+            
             <Button
               onClick={isEditMode ? handleUpdateEvent : handleAddEvent}
               className="w-full"
@@ -495,15 +676,22 @@ export default function CalendarComponent() {
             </h2>
             <p className="mb-2">
               <strong>Date & Time: </strong>
-              {new Date(selectedEvent.date).toLocaleString("en-US", {
-                hour12: true,
-                hour: "numeric",
-                minute: "numeric",
-                second: "numeric",
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })}
+              {(() => {
+                try {
+                  const eventDate = new Date(selectedEvent.date);
+                  return eventDate.toLocaleString("en-US", {
+                    hour12: true,
+                    hour: "numeric",
+                    minute: "numeric",
+                    second: "numeric",
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  });
+                } catch (err) {
+                  return "Invalid date";
+                }
+              })()}
             </p>
             <p className="mb-4">{selectedEvent.details}</p>
             <p className="mb-4 text-sm text-gray-600">
@@ -512,11 +700,21 @@ export default function CalendarComponent() {
             <div className="flex space-x-2">
               <Button
                 onClick={() => {
+                  // Format the date as YYYY-MM-DD
+                  const dateObj = new Date(selectedEvent.date);
+                  
+                  // Use the same timezone-safe date formatting as for new events
+                  const year = dateObj.getFullYear();
+                  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+                  const day = String(dateObj.getDate()).padStart(2, '0');
+                  const formattedDate = `${year}-${month}-${day}`;
+                  
                   setNewEvent({
                     title: selectedEvent.title,
-                    date: selectedEvent.date.substring(0, 10),
+                    date: formattedDate,
                     time: selectedEvent.time || "",
                     details: selectedEvent.details || "",
+                    notifications: selectedEvent.notifications || { dayBefore: true, dayOf: true, atTime: true },
                   });
                   setIsEditMode(true);
                   setIsModalOpen(false);

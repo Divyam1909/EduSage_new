@@ -18,7 +18,11 @@ app.use('/uploads', express.static('uploads'));
 // Connect to MongoDB
 mongoose
   .connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB connected"))
+  .then(() => {
+    console.log("MongoDB connected");
+    // Start the notification checker after DB connection is established
+    startNotificationChecker();
+  })
   .catch((err) => console.error("MongoDB connection error:", err));
 
 /** ========== MODELS ========== **/
@@ -71,6 +75,7 @@ const AnswerSchema = new mongoose.Schema({
   likes: { type: Number, default: 0 },
   comments: { type: Number, default: 0 },
   points: { type: Number, default: 0 },
+  approved: { type: Boolean, default: false },
 });
 const Answer = mongoose.model("Answer", AnswerSchema);
 
@@ -227,11 +232,29 @@ app.get("/api/resources/bookmarked", async (req, res) => {
 /** ========== EVENT APIs ========== **/
 app.post("/api/events", async (req, res) => {
   try {
-    const { title, date, time, details } = req.body;
+    const { title, date, time, details, notifications } = req.body;
     if (!title || !date) {
       return res.status(400).json({ message: "Title and date are required" });
     }
-    const newEvent = new Event({ title, date, time, details });
+    
+    // Create a new event with notification settings
+    const newEvent = new Event({ 
+      title, 
+      date, 
+      time, 
+      details, 
+      notifications: notifications || {
+        dayBefore: true,
+        dayOf: true,
+        atTime: time ? true : false
+      },
+      notificationStatus: {
+        dayBeforeSent: false,
+        dayOfSent: false,
+        atTimeSent: false
+      }
+    });
+    
     await newEvent.save();
     res.status(201).json(newEvent);
   } catch (error) {
@@ -250,12 +273,25 @@ app.get("/api/events", async (req, res) => {
 
 app.put("/api/events/:id", async (req, res) => {
   try {
-    const { title, date, time, details } = req.body;
+    const { title, date, time, details, notifications } = req.body;
+    
+    // Update event with notification settings
     const updatedEvent = await Event.findByIdAndUpdate(
       req.params.id,
-      { title, date, time, details },
+      { 
+        title, 
+        date, 
+        time, 
+        details,
+        notifications: notifications || {
+          dayBefore: true,
+          dayOf: true,
+          atTime: time ? true : false
+        }
+      },
       { new: true }
     );
+    
     if (!updatedEvent) {
       return res.status(404).json({ message: "Event not found" });
     }
@@ -277,6 +313,99 @@ app.delete("/api/events/:id", async (req, res) => {
   }
 });
 
+/** ========== NEW ENDPOINT: Retrieve Pending Notifications ========== **/
+app.get("/api/notifications/pending", async (req, res) => {
+  try {
+    const now = new Date();
+    const pendingNotifications = [];
+    
+    // Get all events
+    const events = await Event.find();
+    
+    for (const event of events) {
+      const eventDate = new Date(event.date);
+      const dayBefore = new Date(eventDate);
+      dayBefore.setDate(dayBefore.getDate() - 1);
+      
+      // Normalize dates to start of day for comparison
+      const nowStartOfDay = new Date(now);
+      nowStartOfDay.setHours(0, 0, 0, 0);
+      
+      const eventStartOfDay = new Date(eventDate);
+      eventStartOfDay.setHours(0, 0, 0, 0);
+      
+      const dayBeforeStartOfDay = new Date(dayBefore);
+      dayBeforeStartOfDay.setHours(0, 0, 0, 0);
+      
+      // Day before notification check
+      if (
+        event.notifications.dayBefore && 
+        !event.notificationStatus.dayBeforeSent && 
+        nowStartOfDay.getTime() >= dayBeforeStartOfDay.getTime() && 
+        eventDate > now
+      ) {
+        pendingNotifications.push({
+          id: `${event._id}_dayBefore`,
+          eventId: event._id,
+          message: `Reminder: "${event.title}" is scheduled for tomorrow.`,
+          type: "dayBefore"
+        });
+        
+        // Mark as sent in database
+        event.notificationStatus.dayBeforeSent = true;
+        await event.save();
+      }
+      
+      // Day of notification check (at 12:00 AM)
+      if (
+        event.notifications.dayOf && 
+        !event.notificationStatus.dayOfSent && 
+        nowStartOfDay.getTime() === eventStartOfDay.getTime()
+      ) {
+        pendingNotifications.push({
+          id: `${event._id}_dayOf`,
+          eventId: event._id,
+          message: `Reminder: "${event.title}" is scheduled for today.`,
+          type: "dayOf"
+        });
+        
+        // Mark as sent in database
+        event.notificationStatus.dayOfSent = true;
+        await event.save();
+      }
+      
+      // At-time notification check
+      if (event.notifications.atTime && !event.notificationStatus.atTimeSent && event.time) {
+        const [hours, minutes] = event.time.split(':').map(Number);
+        const eventTime = new Date(eventDate);
+        eventTime.setHours(hours, minutes, 0, 0);
+        
+        // Check if it's time for the notification (within the last minute)
+        if (
+          now.getTime() >= eventTime.getTime() && 
+          now.getTime() <= eventTime.getTime() + 60000
+        ) {
+          pendingNotifications.push({
+            id: `${event._id}_atTime`,
+            eventId: event._id,
+            message: `Reminder: "${event.title}" is starting now.`,
+            type: "atTime"
+          });
+          
+          // Mark as sent in database
+          event.notificationStatus.atTimeSent = true;
+          await event.save();
+        }
+      }
+    }
+    
+    res.json(pendingNotifications);
+  } catch (error) {
+    console.error("Error fetching pending notifications:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 /** ========== NEW ENDPOINT: Upload Academic Calendar PDF ========== **/
 const uploadHandler = multer();
 const { extractEventsFromPDF } = require("./pdfParser");
@@ -286,35 +415,110 @@ app.post("/api/calendar/upload", uploadHandler.single("pdf"), async (req, res) =
     if (!req.file) {
       return res.status(400).json({ message: "No file uploaded" });
     }
-    const events = await extractEventsFromPDF(req.file.buffer);
-    if (events.length > 0) {
-      await Event.insertMany(events);
-      res.status(200).json({ message: "Events uploaded successfully", events });
-    } else {
-      res.status(400).json({ message: "No events found in the uploaded file" });
+    
+    console.log("PDF file received, size:", req.file.size, "bytes");
+    
+    // Simple check to ensure it's likely a PDF
+    if (req.file.mimetype !== 'application/pdf') {
+      console.log("Warning: File mimetype is not PDF:", req.file.mimetype);
     }
+    
+    // Validate buffer is not empty
+    if (!req.file.buffer || req.file.buffer.length === 0) {
+      return res.status(400).json({ message: "Uploaded file buffer is empty" });
+    }
+    
+    console.log("Extracting events from PDF...");
+    const events = await extractEventsFromPDF(req.file.buffer);
+    
+    if (!events || events.length === 0) {
+      console.log("No events were extracted from the PDF");
+      return res.status(400).json({ message: "No events found in the uploaded file. The PDF format may not be supported." });
+    }
+    
+    console.log(`Extracted ${events.length} events, saving to database...`);
+    
+    // Add notification settings to each event from PDF
+    const eventsWithNotifications = events.map(event => ({
+      ...event,
+      importedFromPdf: true,
+      notifications: {
+        dayBefore: true,
+        dayOf: true,
+        atTime: event.time ? true : false
+      },
+      notificationStatus: {
+        dayBeforeSent: false,
+        dayOfSent: false,
+        atTimeSent: false
+      }
+    }));
+    
+    await Event.insertMany(eventsWithNotifications);
+    console.log(`Successfully saved ${events.length} events from PDF`);
+    
+    res.status(200).json({ 
+      message: `${events.length} events uploaded successfully`, 
+      events,
+      count: events.length
+    });
   } catch (error) {
     console.error("Error processing PDF:", error);
-    res.status(500).json({ message: "Server error processing PDF" });
+    // Send detailed error message to help debugging
+    res.status(500).json({ 
+      message: "Error processing PDF", 
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+/** ========== NEW ENDPOINT: Delete All PDF-Imported Events ========== **/
+app.delete("/api/calendar/pdf-events", async (req, res) => {
+  try {
+    console.log("Deleting all events imported from PDFs...");
+    const result = await Event.deleteMany({ importedFromPdf: true });
+    console.log(`Deleted ${result.deletedCount} PDF-imported events`);
+    res.status(200).json({ 
+      message: `${result.deletedCount} PDF-imported events deleted successfully`,
+      deletedCount: result.deletedCount
+    });
+  } catch (error) {
+    console.error("Error deleting PDF events:", error);
+    res.status(500).json({ message: "Server error deleting PDF events" });
   }
 });
 
 /** ========== QUESTION APIs ========== **/
-app.post("/api/questions", async (req, res) => {
+app.post("/api/questions", authenticateToken, async (req, res) => {
   try {
-    const { title, details, subject, wisdomPoints } = req.body;
+    const { title, details, subject } = req.body;
     if (!title || !subject) {
       return res.status(400).json({ message: "Title and subject are required" });
     }
+    
+    // Create new question
     const newQuestion = new Question({
       title,
       details,
       subject,
-      wisdomPoints,
+      askedBy: req.user.rollno,
+      wisdomPoints: 20,
     });
     await newQuestion.save();
+    
+    // Update user's questionsAsked count
+    await User.findOneAndUpdate(
+      { rollno: req.user.rollno },
+      { $inc: { questionsAsked: 1 } }
+    );
+    
+    // Recalculate wisdom points for the user
+    await recalculateWisdomPoints(req.user.rollno);
+    
     res.status(201).json(newQuestion);
   } catch (error) {
+    console.error("Error creating question:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -336,6 +540,93 @@ app.get("/api/questions/:id", async (req, res) => {
     }
     res.json(question);
   } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Delete a question - only the user who asked can delete
+app.delete("/api/questions/:id", authenticateToken, async (req, res) => {
+  try {
+    const question = await Question.findById(req.params.id);
+    if (!question) {
+      return res.status(404).json({ message: "Question not found" });
+    }
+    // Check if the authenticated user is the one who asked the question
+    if (question.askedBy !== req.user.rollno) {
+      return res.status(403).json({ message: "Not authorized to delete this question" });
+    }
+    
+    // Get all answers to collect their users
+    const answers = await Answer.find({ questionId: question._id });
+    const answerUserIds = answers.map(answer => answer.user);
+    
+    // Delete all answers to this question
+    await Answer.deleteMany({ questionId: question._id });
+    
+    // Delete the question
+    await question.deleteOne();
+    
+    // Recalculate wisdom points for all users who answered the question
+    const uniqueUsers = [...new Set([...answerUserIds, req.user.rollno])];
+    for (const userId of uniqueUsers) {
+      await recalculateWisdomPoints(userId);
+    }
+    
+    res.json({ message: "Question and its answers deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting question", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Approve an answer - only the user who asked the question can approve
+app.put("/api/questions/:questionId/approve/:answerId", authenticateToken, async (req, res) => {
+  try {
+    const { questionId, answerId } = req.params;
+    
+    // Get the question
+    const question = await Question.findById(questionId);
+    if (!question) {
+      return res.status(404).json({ message: "Question not found" });
+    }
+    
+    // Check if the authenticated user is the one who asked the question
+    if (question.askedBy !== req.user.rollno) {
+      return res.status(403).json({ message: "Not authorized to approve answers for this question" });
+    }
+    
+    // Get the answer
+    const answer = await Answer.findById(answerId);
+    if (!answer) {
+      return res.status(404).json({ message: "Answer not found" });
+    }
+    
+    // If another answer was previously approved, unapprove it
+    if (question.approvedAnswerId) {
+      await Answer.findByIdAndUpdate(question.approvedAnswerId, { approved: false });
+    }
+    
+    // Mark the question as solved and save the approved answer ID
+    question.solved = true;
+    question.approvedAnswerId = answerId;
+    
+    // Set the question's wisdom points to a fixed value of 20
+    question.wisdomPoints = 20;
+    await question.save();
+    
+    // Mark the answer as approved
+    answer.approved = true;
+    await answer.save();
+    
+    // Recalculate wisdom points for the user who answered
+    if (answer.user !== "You") { // For real users, not demo answers
+      // Recalculate their wisdom points
+      await recalculateWisdomPoints(answer.user);
+    }
+    
+    res.json({ message: "Answer approved successfully", question, answer });
+  } catch (error) {
+    console.error("Error approving answer", error);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -368,37 +659,62 @@ app.get("/api/questions/:id/answers", async (req, res) => {
 });
 
 // Post an answer for a question
-app.post("/api/questions/:id/answers", async (req, res) => {
+app.post("/api/questions/:id/answers", authenticateToken, async (req, res) => {
   try {
-    const { user, content, attachments } = req.body;
-    if (!user || !content) {
-      return res.status(400).json({ message: "User and content are required" });
+    const { content, attachments } = req.body;
+    const user = req.user.rollno; // Get user from token
+
+    // Find the question
+    const question = await Question.findById(req.params.id);
+    if (!question) {
+      return res.status(404).json({ message: "Question not found" });
     }
-    const newAnswer = new Answer({
+
+    // Create the answer
+    const answer = new Answer({
       questionId: req.params.id,
       user,
       content,
-      attachments,
+      answeredAt: new Date(),
     });
-    await newAnswer.save();
-    await Question.findByIdAndUpdate(req.params.id, { $inc: { answers: 1 } });
-    res.status(201).json(newAnswer);
+
+    // Save answer
+    await answer.save();
+
+    // Increment question's answer count
+    question.answers = (question.answers || 0) + 1;
+    await question.save();
+    
+    // Increment user's questionsAnswered count
+    await User.findOneAndUpdate(
+      { rollno: user },
+      { $inc: { questionsAnswered: 1 } }
+    );
+
+    // Automatically recalculate wisdom points after submitting an answer
+    await recalculateWisdomPoints(user);
+
+    res.status(201).json(answer);
   } catch (error) {
+    console.error("Error submitting answer:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
 
 // Update an answer
-app.put("/api/answers/:id", async (req, res) => {
+app.put("/api/answers/:id", authenticateToken, async (req, res) => {
   try {
     const { content, attachments } = req.body;
     const answer = await Answer.findById(req.params.id);
     if (!answer) {
       return res.status(404).json({ message: "Answer not found" });
     }
-    if (answer.user !== "You") {
-      return res.status(403).json({ message: "Not authorized" });
+    
+    // Only allow the user who created the answer to update it
+    if (answer.user !== req.user.rollno) {
+      return res.status(403).json({ message: "Not authorized to update this answer" });
     }
+    
     answer.content = content;
     answer.attachments = attachments;
     await answer.save();
@@ -409,17 +725,24 @@ app.put("/api/answers/:id", async (req, res) => {
 });
 
 // Delete an answer
-app.delete("/api/answers/:id", async (req, res) => {
+app.delete("/api/answers/:id", authenticateToken, async (req, res) => {
   try {
     const answer = await Answer.findById(req.params.id);
     if (!answer) {
       return res.status(404).json({ message: "Answer not found" });
     }
-    if (answer.user !== "You") {
-      return res.status(403).json({ message: "Not authorized" });
+    
+    // Only allow the user who created the answer to delete it
+    if (answer.user !== req.user.rollno) {
+      return res.status(403).json({ message: "Not authorized to delete this answer" });
     }
+    
     await answer.deleteOne();
     await Question.findByIdAndUpdate(answer.questionId, { $inc: { answers: -1 } });
+    
+    // Recalculate wisdom points after deleting the answer
+    await recalculateWisdomPoints(answer.user);
+    
     res.json({ message: "Answer deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -481,45 +804,31 @@ app.post("/api/profile/photo", authenticateToken, uploadHandler.single("photo"),
 });
 
 /** ========== TOP SAGES API (Updated) ========== **/
-// Updated to sort by raw wisdom points (total subject marks)
+// Updated to sort by wisdom points (which includes points earned from approved answers)
 app.get("/api/top-sages", async (req, res) => {
   try {
-    const topSages = await SubjectMark.aggregate([
-      {
-        $group: {
-          _id: "$user",
-          totalMarks: { $sum: { $add: ["$cia1", "$cia2", "$midSem", "$endSem"] } },
-        },
-      },
-      {
-        $lookup: {
-          from: "users",
-          localField: "_id",
-          foreignField: "rollno",
-          as: "userInfo",
-        },
-      },
-      { $unwind: "$userInfo" },
-      {
-        $project: {
-          _id: 0,
-          rollno: "$userInfo.rollno",
-          name: "$userInfo.name",
-          photoUrl: "$userInfo.photoUrl",
-          rawWisdomPoints: "$totalMarks",
-          rank: "$userInfo.rank",
-        },
-      },
-      { $sort: { rawWisdomPoints: -1 } },
-      { $limit: 3 },
-    ]);
-    res.json(topSages);
+    // Get top users by wisdom points
+    const topSages = await User.find()
+      .sort({ wisdomPoints: -1 })
+      .limit(3)
+      .select('name rollno photoUrl wisdomPoints');
+    
+    // Format the response
+    const formattedTopSages = topSages.map(user => ({
+      name: user.name,
+      rollno: user.rollno,
+      photoUrl: user.photoUrl,
+      rawWisdomPoints: user.wisdomPoints
+    }));
+    
+    res.json(formattedTopSages);
   } catch (error) {
+    console.error("Error fetching top sages:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// NEW ENDPOINT: Class Results
+// Class Results endpoint
 app.get("/api/classResults", async (req, res) => {
   try {
     const results = await SubjectMark.aggregate([
@@ -634,8 +943,13 @@ app.post("/api/quizzes/:id/attempt", async (req, res) => {
     });
     await newAttempt.save();
     console.log("Quiz attempt saved with total score:", totalScore);
-    // Update user's quizzesAttempted and wisdomPoints
-    await User.findOneAndUpdate({ rollno: user }, { $inc: { quizzesAttempted: 1, wisdomPoints: totalScore } });
+    
+    // Update user's quizzesAttempted count
+    await User.findOneAndUpdate({ rollno: user }, { $inc: { quizzesAttempted: 1 } });
+    
+    // Recalculate wisdom points for the user
+    await recalculateWisdomPoints(user);
+    
     res.status(201).json({ attempt: newAttempt, totalScore });
   } catch (error) {
     console.error("Error submitting quiz attempt:", error);
@@ -661,8 +975,13 @@ app.delete("/api/quizAttempts/clearAll", async (req, res) => {
     console.log("Clear all attempts requested for user:", req.query.user);
     const user = req.query.user;
     if (!user) return res.status(400).json({ message: "User required" });
+    
     await QuizAttempt.deleteMany({ user, clearable: true });
     console.log("All clearable attempts cleared for user:", user);
+    
+    // Recalculate wisdom points after clearing attempts
+    await recalculateWisdomPoints(user);
+    
     res.json({ message: "All clearable attempts cleared successfully" });
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -676,6 +995,10 @@ app.delete("/api/quizAttempts/:id", async (req, res) => {
     if (!attempt) {
       return res.status(404).json({ message: "Attempt not found" });
     }
+    
+    // Recalculate wisdom points after deleting the attempt
+    await recalculateWisdomPoints(attempt.user);
+    
     res.json({ message: "Attempt cleared successfully" });
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -706,6 +1029,10 @@ app.post("/api/user/stats/subject", authenticateToken, async (req, res) => {
       endSem,
     });
     await newMark.save();
+    
+    // Automatically recalculate wisdom points after adding marks
+    await recalculateWisdomPoints(req.user.rollno);
+    
     res.status(201).json(newMark);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -722,6 +1049,10 @@ app.put("/api/user/stats/subject/:id", authenticateToken, async (req, res) => {
       { new: true }
     );
     if (!updatedMark) return res.status(404).json({ message: "Record not found" });
+    
+    // Automatically recalculate wisdom points after updating marks
+    await recalculateWisdomPoints(req.user.rollno);
+    
     res.json(updatedMark);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -733,77 +1064,159 @@ app.delete("/api/user/stats/subject/:id", authenticateToken, async (req, res) =>
   try {
     const deleted = await SubjectMark.findOneAndDelete({ _id: req.params.id, user: req.user.rollno });
     if (!deleted) return res.status(404).json({ message: "Record not found" });
+    
+    // Automatically recalculate wisdom points after deleting marks
+    await recalculateWisdomPoints(req.user.rollno);
+    
     res.json({ message: "Record deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: "Server error" });
   }
 });
 
-/** ========== TOP SAGES API (Updated) ========== **/
-// Updated logic: top sages are now sorted by raw wisdom points (total marks)
-app.get("/api/top-sages", async (req, res) => {
+// Calculate and update user's wisdom points
+async function recalculateWisdomPoints(rollno) {
   try {
-    const topSages = await SubjectMark.aggregate([
-      {
-        $group: {
-          _id: "$user",
-          totalMarks: { $sum: { $add: ["$cia1", "$cia2", "$midSem", "$endSem"] } },
-        },
-      },
-      {
-        $lookup: {
-          from: "users",
-          localField: "_id",
-          foreignField: "rollno",
-          as: "userInfo",
-        },
-      },
-      { $unwind: "$userInfo" },
-      {
-        $project: {
-          _id: 0,
-          rollno: "$userInfo.rollno",
-          name: "$userInfo.name",
-          photoUrl: "$userInfo.photoUrl",
-          rawWisdomPoints: "$totalMarks",
-          rank: "$userInfo.rank",
-        },
-      },
-      { $sort: { rawWisdomPoints: -1 } },
-      { $limit: 3 },
-    ]);
-    res.json(topSages);
+    // Get user
+    const user = await User.findOne({ rollno });
+    if (!user) return null;
+    
+    // Start with 0 wisdom points
+    let wisdomPoints = 0;
+    
+    // Add points from approved answers (20 points per approved answer)
+    const approvedAnswers = await Answer.find({ user: rollno, approved: true });
+    wisdomPoints += approvedAnswers.length * 20;
+    
+    // Add points from quiz attempts
+    const quizAttempts = await QuizAttempt.find({ user: rollno });
+    wisdomPoints += quizAttempts.reduce((sum, attempt) => sum + attempt.totalScore, 0);
+    
+    // Add raw marks from subjects (all marks added directly)
+    const subjectMarks = await SubjectMark.find({ user: rollno });
+    subjectMarks.forEach(mark => {
+      wisdomPoints += mark.cia1 + mark.cia2 + mark.midSem + mark.endSem;
+    });
+    
+    // Update user's wisdom points
+    user.wisdomPoints = wisdomPoints;
+    await user.save();
+    
+    return wisdomPoints;
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    console.error("Error recalculating wisdom points:", error);
+    return null;
+  }
+}
+
+/** ========== EVENT NOTIFICATION SYSTEM ========== **/
+// Add a new endpoint to check for pending notifications
+app.get("/api/notifications/check", async (req, res) => {
+  try {
+    await checkAndProcessNotifications();
+    res.json({ message: "Notification check completed" });
+  } catch (error) {
+    console.error("Error checking notifications:", error);
+    res.status(500).json({ message: "Error checking notifications" });
   }
 });
 
-// NEW ENDPOINT: Class Results
-app.get("/api/classResults", async (req, res) => {
-  try {
-    const results = await SubjectMark.aggregate([
-      {
-        $group: {
-          _id: "$user",
-          totalMarks: { $sum: { $add: ["$cia1", "$cia2", "$midSem", "$endSem"] } },
-          count: { $sum: 1 },
-        },
-      },
-      {
-        $project: {
-          overall: { $multiply: [{ $divide: ["$totalMarks", { $multiply: ["$count", 120] }] }, 100] },
-        },
-      },
-      { $sort: { overall: -1 } },
-    ]);
-    const totalStudents = results.length;
-    const classAverageResult = results.reduce((acc, curr) => acc + curr.overall, 0) / (totalStudents || 1);
-    res.json({ classAverageResult, results, totalStudents });
-  } catch (error) {
-    console.error("Error computing class results:", error);
-    res.status(500).json({ message: "Server error" });
+// Function to check and process notifications
+async function checkAndProcessNotifications() {
+  const now = new Date();
+  console.log(`Checking for notifications at ${now.toISOString()}`);
+  
+  // Find all events that have not had all notifications sent
+  const events = await Event.find({
+    $or: [
+      { "notificationStatus.dayBeforeSent": false },
+      { "notificationStatus.dayOfSent": false },
+      { "notificationStatus.atTimeSent": false }
+    ]
+  });
+  
+  console.log(`Found ${events.length} events with pending notifications`);
+  
+  for (const event of events) {
+    const eventDate = new Date(event.date);
+    const dayBefore = new Date(eventDate);
+    dayBefore.setDate(dayBefore.getDate() - 1);
+    
+    // Normalize dates to start of day for comparison
+    const nowStartOfDay = new Date(now);
+    nowStartOfDay.setHours(0, 0, 0, 0);
+    
+    const eventStartOfDay = new Date(eventDate);
+    eventStartOfDay.setHours(0, 0, 0, 0);
+    
+    const dayBeforeStartOfDay = new Date(dayBefore);
+    dayBeforeStartOfDay.setHours(0, 0, 0, 0);
+    
+    // Get the event time if specified
+    let eventTime = null;
+    if (event.time) {
+      const [hours, minutes] = event.time.split(':').map(Number);
+      eventTime = new Date(eventDate);
+      eventTime.setHours(hours, minutes, 0, 0);
+    }
+    
+    // Check for day before notification
+    if (event.notifications.dayBefore && !event.notificationStatus.dayBeforeSent && 
+        nowStartOfDay.getTime() >= dayBeforeStartOfDay.getTime()) {
+      console.log(`Sending day-before notification for event: ${event.title}`);
+      await sendNotification(event, "day-before");
+      event.notificationStatus.dayBeforeSent = true;
+      await event.save();
+    }
+    
+    // Check for day of notification (at 12:00 AM)
+    if (event.notifications.dayOf && !event.notificationStatus.dayOfSent && 
+        nowStartOfDay.getTime() >= eventStartOfDay.getTime()) {
+      console.log(`Sending day-of notification for event: ${event.title}`);
+      await sendNotification(event, "day-of");
+      event.notificationStatus.dayOfSent = true;
+      await event.save();
+    }
+    
+    // Check for at-time notification (if time is specified)
+    if (event.notifications.atTime && !event.notificationStatus.atTimeSent && 
+        eventTime && now.getTime() >= eventTime.getTime()) {
+      console.log(`Sending at-time notification for event: ${event.title}`);
+      await sendNotification(event, "at-time");
+      event.notificationStatus.atTimeSent = true;
+      await event.save();
+    }
   }
-});
+}
+
+// Function to send notification (placeholder for actual implementation)
+async function sendNotification(event, type) {
+  // In a real implementation, this would send push notifications, emails, or other alerts
+  // For now, we'll just log the notification
+  const message = {
+    "day-before": `Reminder: "${event.title}" is scheduled for tomorrow`,
+    "day-of": `Reminder: "${event.title}" is scheduled for today`,
+    "at-time": `Reminder: "${event.title}" is starting now`
+  }[type];
+  
+  console.log(`NOTIFICATION: ${message}`);
+  
+  // Here you would integrate with a notification service like Firebase Cloud Messaging,
+  // send emails, or use browser notifications through a service worker
+  
+  return true;
+}
+
+// Start the notification checker to run every minute
+function startNotificationChecker() {
+  // Initial check
+  checkAndProcessNotifications();
+  
+  // Schedule checks every minute
+  setInterval(checkAndProcessNotifications, 60000);
+  
+  console.log("Notification checker started");
+}
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

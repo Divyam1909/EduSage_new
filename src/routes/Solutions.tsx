@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   Star,
@@ -16,6 +16,8 @@ import {
   Edit,
   Trash,
   ArrowLeft,
+  CheckCircle,
+  Award
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -28,6 +30,17 @@ import {
 } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useUser } from "@/context/UserContext";
 
 const formatDate = (date: Date) =>
   new Intl.DateTimeFormat("en-US", {
@@ -48,6 +61,7 @@ interface Answer {
   likes: number;
   comments: number;
   attachments?: File[];
+  approved?: boolean;
 }
 
 // Define the Question type with wisdomPoints
@@ -58,11 +72,14 @@ interface Question {
   wisdomPoints: number;
   askedAt: string;
   solved?: boolean;
+  askedBy: string;
+  approvedAnswerId?: string;
 }
 
 export default function Solutions() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { refreshUserData } = useUser();
   const [question, setQuestion] = useState<Question | null>(null);
   const [answers, setAnswers] = useState<Answer[]>([]);
   const [showAllAnswers, setShowAllAnswers] = useState(false);
@@ -73,22 +90,58 @@ export default function Solutions() {
   const [editingAnswerId, setEditingAnswerId] = useState<string | null>(null);
   const [editingAnswerContent, setEditingAnswerContent] = useState("");
   const [editingAttachments, setEditingAttachments] = useState<File[]>([]);
+  // For deleting questions
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  // For current user
+  const [currentUser, setCurrentUser] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  
+  // Helper functions for auth and API calls
+  const getToken = useCallback(() => localStorage.getItem("token"), []);
+  
+  const getCurrentUser = useCallback(async () => {
+    const token = getToken();
+    if (!token) return null;
+    
+    try {
+      const res = await fetch("http://localhost:5000/profile", {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setCurrentUser(data.rollno);
+      return data.rollno;
+    } catch (err) {
+      console.error("Error fetching user data:", err);
+      return null;
+    }
+  }, [getToken]);
+
+  // Load user data
+  useEffect(() => {
+    getCurrentUser();
+  }, [getCurrentUser]);
 
   // Fetch question details from backend
-  const fetchQuestion = async () => {
+  const fetchQuestion = useCallback(async () => {
+    if (!id) return;
+    
     try {
       const res = await fetch(`http://localhost:5000/api/questions/${id}`);
       if (res.ok) {
         const data = await res.json();
         setQuestion(data);
+        setLoading(false);
       }
     } catch (error) {
       console.error("Error fetching question", error);
+      setLoading(false);
     }
-  };
+  }, [id]);
 
   // Fetch answers for the question from backend
-  const fetchAnswers = async () => {
+  const fetchAnswers = useCallback(async () => {
+    if (!id) return;
+    
     try {
       const res = await fetch(`http://localhost:5000/api/questions/${id}/answers`);
       if (res.ok) {
@@ -98,14 +151,12 @@ export default function Solutions() {
     } catch (error) {
       console.error("Error fetching answers", error);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
-    if (id) {
-      fetchQuestion();
-      fetchAnswers();
-    }
-  }, [id]);
+    fetchQuestion();
+    fetchAnswers();
+  }, [fetchQuestion, fetchAnswers]);
 
   // Handle file uploads for new answer
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -124,51 +175,77 @@ export default function Solutions() {
   };
 
   // Submit a new answer to backend
-  const handleSubmitAnswer = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmitAnswer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newAnswer.trim() || attachments.length > 0) {
-      try {
-        const res = await fetch(`http://localhost:5000/api/questions/${id}/answers`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            user: "You", // Replace with actual logged-in user info if available
-            content: newAnswer,
-            attachments,
-          }),
-        });
-        if (res.ok) {
-          const addedAnswer = await res.json();
-          setAnswers([addedAnswer, ...answers]);
-          setNewAnswer("");
-          setShowAnswerForm(false);
-          setAttachments([]);
-        } else {
-          alert("Error submitting answer");
-        }
-      } catch (error) {
-        console.error("Error submitting answer", error);
+    
+    if (!newAnswer.trim()) {
+      alert("Please enter your answer");
+      return;
+    }
+    
+    // Check if user is logged in
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("You must be logged in to submit an answer");
+      navigate("/login");
+      return;
+    }
+    
+    try {
+      const res = await fetch(`http://localhost:5000/api/questions/${id}/answers`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          content: newAnswer,
+          attachments,
+        }),
+      });
+      
+      if (res.ok) {
+        const addedAnswer = await res.json();
+        setAnswers([addedAnswer, ...answers]);
+        setNewAnswer("");
+        setShowAnswerForm(false);
+        setAttachments([]);
+        
+        // Refresh user data from context to update questionsAnswered count
+        await refreshUserData();
+      } else {
         alert("Error submitting answer");
       }
+    } catch (error) {
+      console.error("Error submitting answer", error);
+      alert("Error submitting answer");
     }
   };
 
   // Update an existing answer via backend
   const handleUpdateAnswer = async (answerId: string) => {
+    const token = getToken();
+    if (!token) {
+      alert("You must be logged in to update an answer");
+      return;
+    }
+    
     try {
       const res = await fetch(`http://localhost:5000/api/answers/${answerId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({
           content: editingAnswerContent,
           attachments: editingAttachments,
         }),
       });
+      
       if (res.ok) {
         const updatedAnswer = await res.json();
-        setAnswers(
-          answers.map((ans) => (ans._id === answerId ? updatedAnswer : ans))
-        );
+        setAnswers(answers.map((ans) => (ans._id === answerId ? updatedAnswer : ans)));
         setEditingAnswerId(null);
         setEditingAnswerContent("");
         setEditingAttachments([]);
@@ -183,12 +260,28 @@ export default function Solutions() {
 
   // Delete an answer via backend
   const handleDeleteAnswer = async (answerId: string) => {
+    const token = getToken();
+    if (!token) {
+      alert("You must be logged in to delete an answer");
+      return;
+    }
+    
     try {
       const res = await fetch(`http://localhost:5000/api/answers/${answerId}`, {
         method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
       });
+      
       if (res.ok) {
         setAnswers(answers.filter((ans) => ans._id !== answerId));
+        
+        // If this was the approved answer, mark question as unsolved
+        if (question?.approvedAnswerId === answerId) {
+          setQuestion({...question, solved: false, approvedAnswerId: undefined});
+        }
+        
+        // Refresh user data to update questions answered count
+        await refreshUserData();
       } else {
         alert("Error deleting answer");
       }
@@ -198,8 +291,84 @@ export default function Solutions() {
     }
   };
 
+  // Delete a question and all its answers
+  const handleDeleteQuestion = async () => {
+    const token = getToken();
+    if (!token) {
+      alert("You must be logged in to delete a question");
+      return;
+    }
+    
+    try {
+      const res = await fetch(`http://localhost:5000/api/questions/${id}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      
+      if (res.ok) {
+        // Refresh user data to update question counts and wisdom points
+        await refreshUserData();
+        alert("Question deleted successfully");
+        navigate("/home");
+      } else {
+        const errorData = await res.json();
+        alert(`Error: ${errorData.message || "Could not delete question"}`);
+      }
+    } catch (error) {
+      console.error("Error deleting question", error);
+      alert("Error deleting question");
+    }
+  };
+
+  // Approve an answer (only available to the question owner)
+  const handleApproveAnswer = async (answerId: string) => {
+    const token = getToken();
+    if (!token) {
+      alert("You must be logged in to approve an answer");
+      return;
+    }
+    
+    try {
+      const res = await fetch(`http://localhost:5000/api/questions/${id}/approve/${answerId}`, {
+        method: "PUT",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      
+      if (res.ok) {
+        // Update local question and answers state
+        setQuestion({...question!, solved: true, approvedAnswerId: answerId});
+        setAnswers(answers.map(ans => 
+          ans._id === answerId 
+            ? {...ans, approved: true} 
+            : {...ans, approved: false}
+        ));
+        
+        // Refresh user data to update wisdom points in UI
+        await refreshUserData();
+        
+        alert("Answer approved successfully");
+      } else {
+        const errorData = await res.json();
+        alert(`Error: ${errorData.message || "Could not approve answer"}`);
+      }
+    } catch (error) {
+      console.error("Error approving answer", error);
+      alert("Error approving answer");
+    }
+  };
+
+  // Derived state for question ownership and answer display
+  const isQuestionOwner = question?.askedBy === currentUser;
+  
+  // Sort answers to show approved answers first, then by date
+  const sortedAnswers = [...answers].sort((a, b) => {
+    if (a.approved) return -1;
+    if (b.approved) return 1;
+    return new Date(b.answeredAt).getTime() - new Date(a.answeredAt).getTime();
+  });
+
   // Toggle display of all answers or only the first answer
-  const displayedAnswers = showAllAnswers ? answers : answers.slice(0, 1);
+  const displayedAnswers = showAllAnswers ? sortedAnswers : sortedAnswers.slice(0, 1);
 
   return (
     <div className="flex min-h-screen bg-purple-50">
@@ -234,28 +403,6 @@ export default function Solutions() {
               </Link>
             </li>
             <li>
-              <Link to="/quiz">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
-                >
-                  <QuizIcon className="mr-2 h-4 w-4" />
-                  Quizzes
-                </Button>
-              </Link>
-            </li>
-            <li>
-              <Link to="/profile">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
-                >
-                  <User className="mr-2 h-4 w-4" />
-                  Profile
-                </Button>
-              </Link>
-            </li>
-            <li>
               <Link to="/bookmark">
                 <Button
                   variant="ghost"
@@ -263,6 +410,17 @@ export default function Solutions() {
                 >
                   <Bookmark className="mr-2 h-4 w-4" />
                   Bookmarks
+                </Button>
+              </Link>
+            </li>
+            <li>
+              <Link to="/quiz">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
+                  <QuizIcon className="mr-2 h-4 w-4" />
+                  Quizzes
                 </Button>
               </Link>
             </li>
@@ -288,18 +446,41 @@ export default function Solutions() {
                 </Button>
               </Link>
             </li>
+            <li>
+              <Link to="/profile">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
+                  <User className="mr-2 h-4 w-4" />
+                  Profile
+                </Button>
+              </Link>
+            </li>
           </ul>
         </nav>
       </aside>
 
       {/* Main Content */}
       <div className="flex-1">
-        <header className="bg-purple-700 text-white p-4 flex items-center">
-          <Button variant="ghost" onClick={() => navigate("/home")}>
-            <ArrowLeft className="w-5 h-5 mr-2" />
-            Back to Home
-          </Button>
-          <h1 className="text-2xl font-bold ml-4">Solutions</h1>
+        <header className="bg-purple-700 text-white p-4 flex items-center justify-between">
+          <div className="flex items-center">
+            <Button variant="ghost" onClick={() => navigate("/home")}>
+              <ArrowLeft className="w-5 h-5 mr-2" />
+              Back to Home
+            </Button>
+            <h1 className="text-2xl font-bold ml-4">Solutions</h1>
+          </div>
+          {isQuestionOwner && (
+            <Button 
+              variant="destructive" 
+              onClick={() => setShowDeleteDialog(true)}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              <Trash className="w-4 h-4 mr-2" />
+              Delete Question
+            </Button>
+          )}
         </header>
         <main className="container mx-auto p-4">
           {question && (
@@ -308,14 +489,24 @@ export default function Solutions() {
                 <CardTitle className="text-2xl">{question.title}</CardTitle>
               </CardHeader>
               <CardContent>
-                <p>
-                  <strong>Subject:</strong> {question.subject}
-                </p>
-                <p>
-                  <strong>Wisdom Points:</strong> {question.wisdomPoints}
-                </p>
+                <p><strong>Subject:</strong> {question.subject}</p>
+                <p><strong>Wisdom Points:</strong> {question.wisdomPoints}</p>
+                <p><strong>Asked By:</strong> {question.askedBy}</p>
                 <p className="text-sm text-gray-500">
                   Asked on: {formatDate(new Date(question.askedAt))}
+                </p>
+                <p className={`text-sm mt-2 flex items-center ${question.solved ? "text-green-600" : "text-orange-600"}`}>
+                  {question.solved ? (
+                    <>
+                      <CheckCircle className="w-4 h-4 mr-1" />
+                      Solved
+                    </>
+                  ) : (
+                    <>
+                      <QuizIcon className="w-4 h-4 mr-1" />
+                      Awaiting solution
+                    </>
+                  )}
                 </p>
               </CardContent>
             </Card>
@@ -323,16 +514,27 @@ export default function Solutions() {
 
           <h2 className="text-xl font-semibold mb-4">Solutions:</h2>
           {displayedAnswers.map((answer) => (
-            <Card key={answer._id} className="mb-4">
+            <Card 
+              key={answer._id} 
+              className={`mb-4 ${answer.approved ? "border-2 border-green-500" : ""}`}
+            >
               <CardHeader>
-                <div className="flex items-center gap-2">
-                  <Avatar>
-                    <AvatarImage
-                      src={`https://api.dicebear.com/6.x/initials/svg?seed=${answer.user}`}
-                    />
-                    <AvatarFallback>{answer.user[0]}</AvatarFallback>
-                  </Avatar>
-                  <span className="font-semibold">{answer.user}</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Avatar>
+                      <AvatarImage
+                        src={`https://api.dicebear.com/6.x/initials/svg?seed=${answer.user}`}
+                      />
+                      <AvatarFallback>{answer.user[0]}</AvatarFallback>
+                    </Avatar>
+                    <span className="font-semibold">{answer.user}</span>
+                  </div>
+                  {answer.approved && (
+                    <div className="flex items-center text-green-600">
+                      <Award className="w-5 h-5 mr-1" />
+                      <span className="font-medium">Approved Solution</span>
+                    </div>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
@@ -340,9 +542,7 @@ export default function Solutions() {
                   <>
                     <Textarea
                       value={editingAnswerContent}
-                      onChange={(e) =>
-                        setEditingAnswerContent(e.target.value)
-                      }
+                      onChange={(e) => setEditingAnswerContent(e.target.value)}
                       rows={3}
                       className="mb-2"
                     />
@@ -364,9 +564,7 @@ export default function Solutions() {
                         Cancel
                       </Button>
                       <Button
-                        onClick={() =>
-                          editingAnswerId && handleUpdateAnswer(editingAnswerId)
-                        }
+                        onClick={() => editingAnswerId && handleUpdateAnswer(editingAnswerId)}
                       >
                         Save
                       </Button>
@@ -382,7 +580,8 @@ export default function Solutions() {
                 )}
               </CardContent>
               <CardFooter className="flex justify-end space-x-2">
-                {answer.user === "You" && (
+                {/* Allow the answer creator to edit/delete their own answer */}
+                {currentUser === answer.user && (
                   <>
                     <Button
                       variant="ghost"
@@ -395,13 +594,23 @@ export default function Solutions() {
                     </Button>
                     <Button
                       variant="ghost"
-                      onClick={() =>
-                        answer._id && handleDeleteAnswer(answer._id)
-                      }
+                      onClick={() => answer._id && handleDeleteAnswer(answer._id)}
                     >
                       <Trash className="w-4 h-4" />
                     </Button>
                   </>
+                )}
+                
+                {/* Allow question owner to approve an answer */}
+                {isQuestionOwner && !answer.approved && !question?.solved && (
+                  <Button
+                    variant="outline"
+                    className="text-green-600 border-green-600 hover:bg-green-50"
+                    onClick={() => answer._id && handleApproveAnswer(answer._id)}
+                  >
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Approve Solution
+                  </Button>
                 )}
               </CardFooter>
             </Card>
@@ -413,7 +622,7 @@ export default function Solutions() {
             </Button>
           )}
 
-          {!answers.find((a) => a.user === "You") && !showAnswerForm && (
+          {!answers.find((a) => a.user === currentUser) && !showAnswerForm && (
             <Button className="mt-4" onClick={() => setShowAnswerForm(true)}>
               Add Your Answer
             </Button>
@@ -439,6 +648,27 @@ export default function Solutions() {
           )}
         </main>
       </div>
+      
+      {/* Delete Question Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to delete this question?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. All answers to this question will also be deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteQuestion}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

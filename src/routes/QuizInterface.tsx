@@ -89,8 +89,7 @@ export default function QuizInterface() {
     if (token) {
       fetch("http://localhost:5000/profile", {
         headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + token,
+          Authorization: `Bearer ${token}`,
         },
       })
         .then((res) => res.json())
@@ -112,15 +111,25 @@ export default function QuizInterface() {
   }, [userData]);
 
   const fetchQuizzes = () => {
-    fetch("http://localhost:5000/api/quizzes")
+    fetch("http://localhost:5000/api/quizzes", {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    })
       .then((res) => res.json())
       .then((data: Quiz[]) => setQuizzes(data))
       .catch((err) => console.error("Error fetching quizzes:", err));
   };
 
   const fetchAttempts = () => {
+    if (!userData || !userData.rollno) return;
+    
     // Use the user's roll number instead of a hardcoded value
-    fetch(`http://localhost:5000/api/quizAttempts?user=${userData.rollno}`)
+    fetch(`http://localhost:5000/api/quizAttempts?user=${userData.rollno}`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    })
       .then((res) => res.json())
       .then((data) => setAttempts(data))
       .catch((err) => console.error("Error fetching attempts:", err));
@@ -199,7 +208,10 @@ export default function QuizInterface() {
   
     fetch(`http://localhost:5000/api/quizzes/${selectedQuiz._id}/attempt`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
       // Use the logged-in user's roll number here
       body: JSON.stringify({ user: userData.rollno, answers: answersPayload, timeTaken }),
     })
@@ -252,7 +264,10 @@ export default function QuizInterface() {
     const quizToSubmit = { ...newQuiz, questions: processedQuestions };
     fetch("http://localhost:5000/api/quizzes", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
       body: JSON.stringify(quizToSubmit),
     })
       .then((res) => res.json())
@@ -272,6 +287,9 @@ export default function QuizInterface() {
     if (window.confirm("Are you sure you want to delete this quiz?")) {
       fetch(`http://localhost:5000/api/quizzes/${quizId}`, {
         method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
       })
         .then((res) => res.json())
         .then(() => {
@@ -291,6 +309,9 @@ export default function QuizInterface() {
     if (window.confirm("Are you sure you want to clear this attempt?")) {
       fetch(`http://localhost:5000/api/quizAttempts/${attemptId}`, {
         method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
       })
         .then((res) => res.json())
         .then(() => {
@@ -776,23 +797,9 @@ export default function QuizInterface() {
               </Link>
             </li>
             <li>
-              <Link to="/Resources">
+              <Link to="/resources">
                 <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
                   <FileText className="mr-2 h-4 w-4" /> Resources
-                </Button>
-              </Link>
-            </li>
-            <li>
-              <Link to="/quiz">
-                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
-                  <QuizIcon className="mr-2 h-4 w-4" /> Quizzes
-                </Button>
-              </Link>
-            </li>
-            <li>
-              <Link to="/profile">
-                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
-                  <User className="mr-2 h-4 w-4" /> Profile
                 </Button>
               </Link>
             </li>
@@ -800,6 +807,13 @@ export default function QuizInterface() {
               <Link to="/bookmark">
                 <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
                   <Bookmark className="mr-2 h-4 w-4" /> Bookmarks
+                </Button>
+              </Link>
+            </li>
+            <li>
+              <Link to="/quiz">
+                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
+                  <QuizIcon className="mr-2 h-4 w-4" /> Quizzes
                 </Button>
               </Link>
             </li>
@@ -814,6 +828,13 @@ export default function QuizInterface() {
               <Link to="/ai">
                 <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
                   <Bot className="mr-2 h-4 w-4" /> AI Assistant
+                </Button>
+              </Link>
+            </li>
+            <li>
+              <Link to="/profile">
+                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
+                  <User className="mr-2 h-4 w-4" /> Profile
                 </Button>
               </Link>
             </li>
