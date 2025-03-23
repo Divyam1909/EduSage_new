@@ -39,11 +39,11 @@
     const [resourceToDelete, setResourceToDelete] = useState<Resource | null>(null);
 
     const courses = [
-      "Arrays and Strings",
-      "Linked Lists",
-      "Trees and Graphs",
-      "Sorting and Searching",
-      "Dynamic Programming",
+      "MES",
+      "CN",
+      "OS",
+      "SE",
+      "EM-4",
     ];
 
     // Fetch resources from the backend on component mount

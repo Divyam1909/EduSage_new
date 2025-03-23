@@ -1,9 +1,26 @@
 import { useState, useEffect } from "react";
-import { Bookmark, Bot, Calendar, ChevronLeft, ChevronRight, FileText, PlusCircle, User, Users, HelpCircle as Quiz } from "lucide-react";
+import {
+  Bookmark,
+  Bot,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  PlusCircle,
+  User,
+  Users,
+  HelpCircle as Quiz,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { BookOpen } from "lucide-react";
 import { Link } from "react-router-dom";
 import axios from "axios";
@@ -25,8 +42,13 @@ export default function CalendarComponent() {
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [isAddEventModalOpen, setIsAddEventModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [newEvent, setNewEvent] = useState({ title: "", date: "", time: "", details: "" });
-  
+  const [newEvent, setNewEvent] = useState({
+    title: "",
+    date: "",
+    time: "",
+    details: "",
+  });
+
   // New states for PDF upload
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -42,19 +64,28 @@ export default function CalendarComponent() {
     return `${days} days, ${hours} hours, ${minutes} minutes remaining.`;
   };
 
+  // Fetch events from the backend
   useEffect(() => {
-    axios.get("http://localhost:5000/api/events")
+    axios
+      .get("http://localhost:5000/api/events")
       .then((response) => {
-        const transformed = response.data.map((ev: any) => ({ ...ev, id: ev._id }));
+        const transformed = response.data.map((ev: any) => ({
+          ...ev,
+          id: ev._id,
+        }));
         setEvents(transformed);
       })
       .catch((error) => console.error("Error fetching events:", error));
   }, []);
 
   const refreshEvents = () => {
-    axios.get("http://localhost:5000/api/events")
+    axios
+      .get("http://localhost:5000/api/events")
       .then((response) => {
-        const transformed = response.data.map((ev: any) => ({ ...ev, id: ev._id }));
+        const transformed = response.data.map((ev: any) => ({
+          ...ev,
+          id: ev._id,
+        }));
         setEvents(transformed);
       })
       .catch((error) => console.error("Error fetching events:", error));
@@ -69,7 +100,10 @@ export default function CalendarComponent() {
       const timePart = newEvent.time ? "T" + newEvent.time : "T00:00:00";
       const formattedDate = new Date(newEvent.date + timePart).toISOString();
       const eventToAdd = { ...newEvent, date: formattedDate };
-      const response = await axios.post("http://localhost:5000/api/events", eventToAdd);
+      const response = await axios.post(
+        "http://localhost:5000/api/events",
+        eventToAdd
+      );
       const addedEvent = { ...response.data, id: response.data._id };
       setEvents((prevEvents) => [...prevEvents, addedEvent]);
       setIsAddEventModalOpen(false);
@@ -89,7 +123,10 @@ export default function CalendarComponent() {
       const timePart = newEvent.time ? "T" + newEvent.time : "T00:00:00";
       const formattedDate = new Date(newEvent.date + timePart).toISOString();
       const eventToUpdate = { ...newEvent, date: formattedDate };
-      const response = await axios.put(`http://localhost:5000/api/events/${selectedEvent.id}`, eventToUpdate);
+      const response = await axios.put(
+        `http://localhost:5000/api/events/${selectedEvent.id}`,
+        eventToUpdate
+      );
       const updatedEvent = { ...response.data, id: response.data._id };
       setEvents((prevEvents) =>
         prevEvents.map((ev) => (ev.id === selectedEvent.id ? updatedEvent : ev))
@@ -104,10 +141,14 @@ export default function CalendarComponent() {
   };
 
   const handleDeleteEvent = async () => {
-    if (!selectedEvent) return; 
+    if (!selectedEvent) return;
     try {
-      await axios.delete(`http://localhost:5000/api/events/${selectedEvent.id}`);
-      setEvents((prevEvents) => prevEvents.filter((ev) => ev.id !== selectedEvent.id));
+      await axios.delete(
+        `http://localhost:5000/api/events/${selectedEvent.id}`
+      );
+      setEvents((prevEvents) =>
+        prevEvents.filter((ev) => ev.id !== selectedEvent.id)
+      );
       setIsModalOpen(false);
       setSelectedEvent(null);
     } catch (error) {
@@ -129,7 +170,10 @@ export default function CalendarComponent() {
     formData.append("pdf", selectedFile);
     try {
       // Let axios automatically set the Content-Type (do not set it explicitly)
-      const response = await axios.post("http://localhost:5000/api/calendar/upload", formData);
+      const response = await axios.post(
+        "http://localhost:5000/api/calendar/upload",
+        formData
+      );
       alert(response.data.message);
       setShowUploadModal(false);
       setSelectedFile(null);
@@ -176,16 +220,22 @@ export default function CalendarComponent() {
         <nav>
           <ul className="space-y-2">
             <li>
-            <Link to="/home">
-              <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
-                <Users className="mr-2 h-4 w-4" />
-                Discussion Forum
-              </Button>
+              <Link to="/home">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
+                  <Users className="mr-2 h-4 w-4" />
+                  Discussion Forum
+                </Button>
               </Link>
             </li>
             <li>
               <Link to="/Resources">
-                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
                   <FileText className="mr-2 h-4 w-4" />
                   Resources
                 </Button>
@@ -193,7 +243,10 @@ export default function CalendarComponent() {
             </li>
             <li>
               <Link to="/quiz">
-                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
                   <Quiz className="mr-2 h-4 w-4" />
                   Quizzes
                 </Button>
@@ -201,7 +254,10 @@ export default function CalendarComponent() {
             </li>
             <li>
               <Link to="/profile">
-                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
                   <User className="mr-2 h-4 w-4" />
                   Profile
                 </Button>
@@ -209,7 +265,10 @@ export default function CalendarComponent() {
             </li>
             <li>
               <Link to="/bookmark">
-                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
                   <Bookmark className="mr-2 h-4 w-4" />
                   Bookmarks
                 </Button>
@@ -217,7 +276,10 @@ export default function CalendarComponent() {
             </li>
             <li>
               <Link to="/calendar">
-                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
                   <Calendar className="mr-2 h-4 w-4" />
                   Calendar
                 </Button>
@@ -225,7 +287,10 @@ export default function CalendarComponent() {
             </li>
             <li>
               <Link to="/ai">
-                <Button variant="ghost" className="w-full justify-start hover:bg-white hover:text-black transition-colors">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start hover:bg-white hover:text-black transition-colors"
+                >
                   <Bot className="mr-2 h-4 w-4" />
                   AI Assistant
                 </Button>
@@ -237,30 +302,46 @@ export default function CalendarComponent() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col p-8">
-        <h1 className="text-4xl font-bold text-purple-800 mb-6">EduSage Calendar</h1>
+        <h1 className="text-4xl font-bold text-purple-800 mb-6">
+          EduSage Calendar
+        </h1>
 
         {/* Current Date & Time Bar */}
         <div className="bg-white rounded-lg shadow-lg p-4 mb-6 border border-purple-200">
           <p className="text-xl text-purple-600 font-semibold">
-            Current Date and Time: {currentDateTime.toLocaleString("en-US", { 
-              hour12: true, 
-              hour: "numeric", 
-              minute: "numeric", 
-              second: "numeric", 
-              year: "numeric", 
-              month: "long", 
-              day: "numeric" 
+            Current Date and Time:{" "}
+            {currentDateTime.toLocaleString("en-US", {
+              hour12: true,
+              hour: "numeric",
+              minute: "numeric",
+              second: "numeric",
+              year: "numeric",
+              month: "long",
+              day: "numeric",
             })}
           </p>
         </div>
 
         {/* Top Buttons: Add Event & Upload Academic Calendar */}
         <div className="flex items-center mb-4 space-x-4">
-          <Button variant="outline" onClick={() => { setIsAddEventModalOpen(true); setIsEditMode(false); }} className="flex items-center space-x-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              // Reset newEvent state when manually adding a new event
+              setNewEvent({ title: "", date: "", time: "", details: "" });
+              setIsAddEventModalOpen(true);
+              setIsEditMode(false);
+            }}
+            className="flex items-center space-x-2"
+          >
             <PlusCircle className="w-6 h-6 text-purple-600" />
             <span>Add Event</span>
           </Button>
-          <Button variant="outline" onClick={() => setShowUploadModal(true)} className="flex items-center space-x-2">
+          <Button
+            variant="outline"
+            onClick={() => setShowUploadModal(true)}
+            className="flex items-center space-x-2"
+          >
             <FileText className="w-6 h-6 text-purple-600" />
             <span>Upload Academic Calendar</span>
           </Button>
@@ -268,13 +349,26 @@ export default function CalendarComponent() {
 
         {/* Month and Year Selection */}
         <div className="flex items-center justify-between mb-4">
-          <Button variant="outline" onClick={() => setSelectedMonth((prev) => (prev === 0 ? 11 : prev - 1))}>
+          <Button
+            variant="outline"
+            onClick={() =>
+              setSelectedMonth((prev) => (prev === 0 ? 11 : prev - 1))
+            }
+          >
             <ChevronLeft />
           </Button>
           <h2 className="text-lg font-semibold">
-            {new Intl.DateTimeFormat("en-US", { month: "long" }).format(new Date(selectedYear, selectedMonth))} {selectedYear}
+            {new Intl.DateTimeFormat("en-US", { month: "long" }).format(
+              new Date(selectedYear, selectedMonth)
+            )}{" "}
+            {selectedYear}
           </h2>
-          <Button variant="outline" onClick={() => setSelectedMonth((prev) => (prev === 11 ? 0 : prev + 1))}>
+          <Button
+            variant="outline"
+            onClick={() =>
+              setSelectedMonth((prev) => (prev === 11 ? 0 : prev + 1))
+            }
+          >
             <ChevronRight />
           </Button>
         </div>
@@ -282,7 +376,9 @@ export default function CalendarComponent() {
         {/* Weekday Headers */}
         <div className="grid grid-cols-7 gap-2 text-center font-bold mb-2">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-            <div key={day} className="p-2">{day}</div>
+            <div key={day} className="p-2">
+              {day}
+            </div>
           ))}
         </div>
 
@@ -298,11 +394,29 @@ export default function CalendarComponent() {
               <div
                 key={i}
                 className="flex flex-col items-center h-16 border border-purple-200 rounded-lg cursor-pointer hover:bg-purple-50"
-                onClick={() => { if (dayEvents.length) handleEventClick(dayEvents[0]); }}
+                onClick={() => {
+                  if (dayEvents.length > 0) {
+                    // If an event exists on this day, open the event details modal.
+                    handleEventClick(dayEvents[0]);
+                  } else {
+                    // If no event exists, pre-fill the date and open the add event modal.
+                    setNewEvent({
+                      title: "",
+                      date: date.toISOString().substring(0, 10),
+                      time: "",
+                      details: "",
+                    });
+                    setIsAddEventModalOpen(true);
+                    setIsEditMode(false);
+                  }
+                }}
               >
                 <span className="mb-1">{i + 1}</span>
                 {dayEvents.map((event) => (
-                  <div key={event.id} className="text-xs p-1 bg-purple-600 text-white rounded">
+                  <div
+                    key={event.id}
+                    className="text-xs p-1 bg-purple-600 text-white rounded"
+                  >
                     {event.title}
                   </div>
                 ))}
@@ -316,13 +430,58 @@ export default function CalendarComponent() {
       {isAddEventModalOpen && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white border border-purple-300 p-6 rounded-lg shadow-xl w-96">
-            <h2 className="text-2xl font-bold mb-4 text-purple-800">{isEditMode ? "Edit Event" : "Add New Event"}</h2>
-            <Input type="text" placeholder="Event Title" className="mb-2" value={newEvent.title} onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })} />
-            <Input type="date" className="mb-2" value={newEvent.date} onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })} />
-            <Input type="time" placeholder="Event Time (optional)" className="mb-2" value={newEvent.time} onChange={(e) => setNewEvent({ ...newEvent, time: e.target.value })} />
-            <Textarea placeholder="Event Details (optional)" className="mb-2" value={newEvent.details} onChange={(e) => setNewEvent({ ...newEvent, details: e.target.value })} />
-            <Button onClick={isEditMode ? handleUpdateEvent : handleAddEvent} className="w-full">{isEditMode ? "Update Event" : "Add Event"}</Button>
-            <Button onClick={() => { setIsAddEventModalOpen(false); setIsEditMode(false); }} className="w-full mt-2">Cancel</Button>
+            <h2 className="text-2xl font-bold mb-4 text-purple-800">
+              {isEditMode ? "Edit Event" : "Add New Event"}
+            </h2>
+            <Input
+              type="text"
+              placeholder="Event Title"
+              className="mb-2"
+              value={newEvent.title}
+              onChange={(e) =>
+                setNewEvent({ ...newEvent, title: e.target.value })
+              }
+            />
+            <Input
+              type="date"
+              className="mb-2"
+              value={newEvent.date}
+              onChange={(e) =>
+                setNewEvent({ ...newEvent, date: e.target.value })
+              }
+            />
+            <Input
+              type="time"
+              placeholder="Event Time (optional)"
+              className="mb-2"
+              value={newEvent.time}
+              onChange={(e) =>
+                setNewEvent({ ...newEvent, time: e.target.value })
+              }
+            />
+            <Textarea
+              placeholder="Event Details (optional)"
+              className="mb-2"
+              value={newEvent.details}
+              onChange={(e) =>
+                setNewEvent({ ...newEvent, details: e.target.value })
+              }
+            />
+            <Button
+              onClick={isEditMode ? handleUpdateEvent : handleAddEvent}
+              className="w-full"
+            >
+              {isEditMode ? "Update Event" : "Add Event"}
+            </Button>
+            <Button
+              onClick={() => {
+                setIsAddEventModalOpen(false);
+                setIsEditMode(false);
+              }}
+              className="w-full mt-2"
+            >
+              Cancel
+            </Button>
           </div>
         </div>
       )}
@@ -331,7 +490,9 @@ export default function CalendarComponent() {
       {isModalOpen && selectedEvent && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white border border-purple-300 p-6 rounded-lg shadow-xl w-96">
-            <h2 className="text-2xl font-bold mb-4 text-purple-800">{selectedEvent.title}</h2>
+            <h2 className="text-2xl font-bold mb-4 text-purple-800">
+              {selectedEvent.title}
+            </h2>
             <p className="mb-2">
               <strong>Date & Time: </strong>
               {new Date(selectedEvent.date).toLocaleString("en-US", {
@@ -345,24 +506,35 @@ export default function CalendarComponent() {
               })}
             </p>
             <p className="mb-4">{selectedEvent.details}</p>
-            <p className="mb-4 text-sm text-gray-600">{getTimeLeft(new Date(selectedEvent.date))}</p>
+            <p className="mb-4 text-sm text-gray-600">
+              {getTimeLeft(new Date(selectedEvent.date))}
+            </p>
             <div className="flex space-x-2">
-              <Button onClick={() => { 
-                setNewEvent({ 
-                  title: selectedEvent.title, 
-                  date: selectedEvent.date.substring(0, 10), 
-                  time: selectedEvent.time || "", 
-                  details: selectedEvent.details || "" 
-                }); 
-                setIsEditMode(true); 
-                setIsModalOpen(false); 
-                setIsAddEventModalOpen(true); 
-              }}>
+              <Button
+                onClick={() => {
+                  setNewEvent({
+                    title: selectedEvent.title,
+                    date: selectedEvent.date.substring(0, 10),
+                    time: selectedEvent.time || "",
+                    details: selectedEvent.details || "",
+                  });
+                  setIsEditMode(true);
+                  setIsModalOpen(false);
+                  setIsAddEventModalOpen(true);
+                }}
+              >
                 Edit
               </Button>
-              <Button onClick={handleDeleteEvent} variant="destructive">Delete</Button>
+              <Button onClick={handleDeleteEvent} variant="destructive">
+                Delete
+              </Button>
             </div>
-            <Button onClick={() => setIsModalOpen(false)} className="w-full mt-2">Close</Button>
+            <Button
+              onClick={() => setIsModalOpen(false)}
+              className="w-full mt-2"
+            >
+              Close
+            </Button>
           </div>
         </div>
       )}
@@ -371,12 +543,28 @@ export default function CalendarComponent() {
       {showUploadModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white border border-purple-300 p-6 rounded-lg shadow-xl w-96">
-            <h2 className="text-2xl font-bold mb-4 text-purple-800">Upload Academic Calendar PDF</h2>
-            <Input type="file" accept="application/pdf" onChange={handleFileChange} className="mb-4" />
-            <Button onClick={handleUploadPDF} disabled={uploading} className="w-full">
+            <h2 className="text-2xl font-bold mb-4 text-purple-800">
+              Upload Academic Calendar PDF
+            </h2>
+            <Input
+              type="file"
+              accept="application/pdf"
+              onChange={handleFileChange}
+              className="mb-4"
+            />
+            <Button
+              onClick={handleUploadPDF}
+              disabled={uploading}
+              className="w-full"
+            >
               {uploading ? "Uploading..." : "Upload"}
             </Button>
-            <Button onClick={() => setShowUploadModal(false)} className="w-full mt-2">Cancel</Button>
+            <Button
+              onClick={() => setShowUploadModal(false)}
+              className="w-full mt-2"
+            >
+              Cancel
+            </Button>
           </div>
         </div>
       )}
