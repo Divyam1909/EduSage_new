@@ -24,10 +24,12 @@ interface BookmarkItem {
   fileLink: string;
 }
 
+// Component to display and manage bookmarked learning resources
 export default function Bookmarks() {
+  // State to store the list of bookmarked resources
   const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([]);
 
-  // Fetch bookmarked resources from the backend
+  // Fetch bookmarked resources from the backend when component mounts
   useEffect(() => {
     axios
       .get("http://localhost:5000/api/resources/bookmarked")
@@ -35,7 +37,7 @@ export default function Bookmarks() {
       .catch((error) => console.error("Error fetching bookmarks:", error));
   }, []);
 
-  // Handle delete bookmark
+  // Handle deleting a bookmark (toggling bookmark status off)
   const handleDeleteBookmark = async (id: string) => {
     try {
       await axios.put(`http://localhost:5000/api/resources/${id}/bookmark`); // Toggle bookmark off
@@ -47,7 +49,7 @@ export default function Bookmarks() {
 
   return (
     <div className="min-h-screen bg-purple-50 flex">
-      {/* Left Sidebar */}
+      {/* Left Sidebar Navigation */}
       <aside className="w-64 bg-purple-800 text-white p-4">
         <div className="flex items-center mb-8">
         <img src="/ES_logo2.png" alt="Your Logo" className="w-20 h-20 mr-2" />
@@ -115,19 +117,21 @@ export default function Bookmarks() {
         </nav>
       </aside>
 
-      {/* Main Content */}
+      {/* Main Content - Bookmarks List */}
       <div className="flex-1 flex flex-col p-8">
-        <div className="max-w-4xl w-full ml-0"> {/* Left-align the content */}
+        <div className="max-w-4xl w-full ml-0">
           <h1 className="text-3xl font-bold text-purple-800 mb-8">My Bookmarks</h1>
 
+          {/* Display message if no bookmarks exist */}
           {bookmarks.length === 0 ? (
             <p className="text-left text-gray-500">No bookmarks yet.</p>
           ) : (
-            <div className="flex flex-col space-y-2 w-full"> {/* Removed grid to prevent card stretching */}
+            <div className="flex flex-col space-y-2 w-full">
+              {/* Render each bookmark as a card */}
               {bookmarks.map((bookmark) => (
-                <Card key={bookmark._id} className="h-auto py-2 px-4 shadow-md w-full"> {/* Auto height & reduced padding */}
+                <Card key={bookmark._id} className="h-auto py-2 px-4 shadow-md w-full">
                   <CardContent className="flex justify-between items-center w-full p-2">
-                    {/* Left Side: Icon + File Name */}
+                    {/* Left Side: Icon + File Name with Link */}
                     <div className="flex items-center gap-3 w-full">
                       <Bookmark className="h-5 w-5 text-purple-600" />
                       <a 

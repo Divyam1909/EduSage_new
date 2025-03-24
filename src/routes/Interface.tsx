@@ -13,11 +13,15 @@ import {
   BookOpenCheck,
 } from "lucide-react";
 
+// Main dashboard interface component showing available learning tools
 export default function Interface() {
+  // State to track selected topics for filtering content
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
 
+  // List of available topics to filter content
   const topics = ["COA", "DLDA", "DSA", "EM", "DBMS"];
 
+  // Toggle selection of a topic (select if not selected, deselect if already selected)
   const toggleTopic = (topic: string) => {
     setSelectedTopics((prev) =>
       prev.includes(topic) ? prev.filter((t) => t !== topic) : [...prev, topic]
@@ -26,7 +30,7 @@ export default function Interface() {
 
   return (
     <div className="flex h-screen bg-purple-50">
-      {/* Sidebar */}
+      {/* Left Sidebar for Topic Selection */}
       <div className="w-64 bg-purple-100 p-4 shadow-md">
         <h2 className="text-xl font-bold mb-4 text-purple-800">Topics</h2>
         <ScrollArea className="h-[calc(100vh-100px)]">
@@ -43,8 +47,9 @@ export default function Interface() {
         </ScrollArea>
       </div>
 
-      {/* Main Content */}
+      {/* Main Content Area */}
       <div className="flex-1 flex flex-col">
+        {/* Header with Logo and Navigation */}
         <header className="flex justify-between items-center p-4 bg-purple-200">
           <div className="flex items-center">
             <BookOpen className="h-8 w-8 text-purple-600 mr-2" />
@@ -65,7 +70,9 @@ export default function Interface() {
           </div>
         </header>
 
+        {/* Cards Grid for Learning Features */}
         <div className="flex-1 p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Interview Practice Card */}
           <div className="flex flex-col bg-white rounded-lg shadow-md overflow-hidden">
             <Button
               className="h-32 text-xl font-semibold bg-purple-600 hover:bg-purple-700 text-white rounded-t-lg"
@@ -88,6 +95,8 @@ export default function Interface() {
               </Button>
             </div>
           </div>
+
+          {/* AI Help Card */}
           <div className="flex flex-col bg-white rounded-lg shadow-md overflow-hidden">
             <Button
               className="h-32 text-xl font-semibold bg-purple-600 hover:bg-purple-700 text-white rounded-t-lg"
@@ -110,6 +119,8 @@ export default function Interface() {
               </Button>
             </div>
           </div>
+
+          {/* Test Preparation Card */}
           <div className="flex flex-col bg-white rounded-lg shadow-md overflow-hidden">
             <Button
               className="h-32 text-xl font-semibold bg-purple-600 hover:bg-purple-700 text-white rounded-t-lg"
@@ -135,6 +146,7 @@ export default function Interface() {
           </div>
         </div>
 
+        {/* Selected Topics Display */}
         {selectedTopics.length > 0 && (
           <div className="p-4 bg-purple-100 shadow-inner">
             <h3 className="text-xl font-semibold mb-2 text-purple-800">

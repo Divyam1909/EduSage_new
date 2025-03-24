@@ -9,12 +9,16 @@ import {
 } from 'lucide-react'
 import { Link } from "react-router-dom"
 
+// Main component for the AI Assistant page that provides AI-powered learning tools
 export default function Component() {
+  // State for managing selected topics and chat modal visibility
   const [selectedTopics, setSelectedTopics] = useState<string[]>([])
   const [isChatModalOpen, setIsChatModalOpen] = useState(false)
 
+  // List of available topics for filtering AI resources
   const topics = ["COA", "DLDA", "DSA", "EM", "DBMS"]
 
+  // Handler to add or remove topics from the selected list
   const toggleTopic = (topic: string) => {
     setSelectedTopics(prev =>
       prev.includes(topic) ? prev.filter(t => t !== topic) : [...prev, topic]
@@ -23,7 +27,7 @@ export default function Component() {
 
   return (
     <div className="flex h-screen bg-purple-50">
-      {/* Left Side Menu */}
+      {/* Left Side Navigation Menu */}
       <aside className="w-64 bg-purple-800 text-white p-4">
         <div className="flex items-center mb-8">
           <img src="/ES_logo2.png" alt="Your Logo" className="w-20 h-20 mr-2" />
@@ -112,21 +116,15 @@ export default function Component() {
         </nav>
       </aside>
 
-      {/* Main Content */}
-     
+      {/* Main Content Area */}
       <div className="flex-1 flex flex-col">
-   <h1 className="text-4xl font-bold text-purple-800 mb-6 text-center">
+        <h1 className="text-4xl font-bold text-purple-800 mb-6 text-center">
               AI Assistant
             </h1>
-        {/* <header className="flex justify-between items-center p-4 bg-purple-800 text-white">
-        <div className="flex items-center space-x-4">
-                <GraduationCap className="w-8 h-8 mr-2" />
-                <h1 className="text-3xl font-bold">EduSage</h1>
-              </div>
-        </header> */}
 
-        {/* Main content cards, topics, etc. */}
+        {/* Main content cards displaying AI features */}
         <div className="flex-1 p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Interview Practice Card */}
           <div className="flex flex-col bg-white rounded-lg shadow-md overflow-hidden">
             <Button
               className="h-32 text-xl font-semibold bg-purple-600 hover:bg-purple-700 text-white rounded-t-lg"
@@ -148,10 +146,12 @@ export default function Component() {
               </Button>
             </div>
           </div>
+
+          {/* AI Help Card */}
           <div className="flex flex-col bg-white rounded-lg shadow-md overflow-hidden">
             <Button
               className="h-32 text-xl font-semibold bg-purple-600 hover:bg-purple-700 text-white rounded-t-lg"
-              onClick={() => setIsChatModalOpen(true)}  // Opens the chat modal
+              onClick={() => setIsChatModalOpen(true)}
             >
               <MessageSquare className="mr-2 h-6 w-6" />
               AI Help
@@ -162,13 +162,15 @@ export default function Component() {
               </p>
               <Button 
                 className="mt-4 bg-purple-500 hover:bg-purple-600 text-white"
-                onClick={() => setIsChatModalOpen(true)}  // Opens the chat modal
+                onClick={() => setIsChatModalOpen(true)}
               >
                 <HelpCircle className="mr-2 h-4 w-4" />
                 Ask AI
               </Button>
             </div>
           </div>
+
+          {/* Test Preparation Card */}
           <div className="flex flex-col bg-white rounded-lg shadow-md overflow-hidden">
             <Button
               className="h-32 text-xl font-semibold bg-purple-600 hover:bg-purple-700 text-white rounded-t-lg"
@@ -192,6 +194,7 @@ export default function Component() {
           </div>
         </div>
 
+        {/* Selected Topics Display */}
         {selectedTopics.length > 0 && (
           <div className="p-4 bg-purple-100 shadow-inner">
             <h3 className="text-xl font-semibold mb-2 text-purple-800">Selected Topics:</h3>
@@ -206,7 +209,7 @@ export default function Component() {
         )}
       </div>
 
-      {/* Chat Modal for AI Help using iframe with shareable URL */}
+      {/* Chat Modal for AI Help - Uses iframe with external chatbot */}
       {isChatModalOpen && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-lg h-full max-h-[90vh] overflow-hidden">

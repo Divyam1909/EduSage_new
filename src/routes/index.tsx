@@ -18,7 +18,7 @@ import Solutions from "./Solutions";
 // import Performance from "./Performance"; // Removed as file extension is .txt not .tsx
 import Register from "./Register";
 
-
+// Export all route components for use in the application router
 export {
   Calendar,
   // CourseDashboard, // Removed as file doesn't exist

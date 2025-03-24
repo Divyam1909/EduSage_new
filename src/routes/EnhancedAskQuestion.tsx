@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { useUser } from "@/context/UserContext";
 
+// Sample previous questions for demonstrating similar question detection
 const previousQuestions = [
   "What is the difference between mitosis and meiosis?",
   "How does photosynthesis work?",
@@ -29,18 +30,23 @@ const previousQuestions = [
   "Can someone explain the theory of relativity?",
 ];
 
+// Component for submitting new questions to the discussion forum with enhanced features
 export default function EnhancedAskQuestion() {
   const navigate = useNavigate();
   const { refreshUserData } = useUser();
+  
+  // Form state variables
   const [title, setTitle] = useState("");
   const [details, setDetails] = useState("");
   const [subject, setSubject] = useState("");
   const [attachments, setAttachments] = useState<File[]>([]);
+  
+  // State for similar question suggestions
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showDialog, setShowDialog] = useState(false);
   const [selectedQuestion, setSelectedQuestion] = useState("");
 
-  // Filter suggestions based on title input
+  // Filter for similar questions when title changes
   useEffect(() => {
     if (title.length > 2) {
       setSuggestions(previousQuestions.filter(q => 
@@ -51,6 +57,7 @@ export default function EnhancedAskQuestion() {
     }
   }, [title]);
 
+  // Handle file attachment uploads (only images and PDFs)
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files).filter(
@@ -60,21 +67,25 @@ export default function EnhancedAskQuestion() {
     }
   };
 
+  // Remove a specific file from attachments
   const removeAttachment = (index: number) => {
     setAttachments(attachments.filter((_, i) => i !== index));
   };
 
+  // Handle when user clicks on a suggested similar question
   const handleSuggestionClick = (question: string) => {
     setSelectedQuestion(question);
     setShowDialog(true);
   };
 
+  // Handle confirmation to view an existing similar question
   const confirmSuggestion = () => {
     setTitle(selectedQuestion);
     setShowDialog(false);
     alert(`Redirecting to the existing question: ${selectedQuestion}`);
   };
 
+  // Submit the new question to the backend
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -116,11 +127,13 @@ export default function EnhancedAskQuestion() {
 
   return (
     <div className="min-h-screen bg-purple-50 flex items-center justify-center p-4">
+      {/* Main form card */}
       <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl">
         <h2 className="text-2xl font-bold text-purple-800 mb-6">
           Ask Your Question
         </h2>
         <form className="space-y-6" onSubmit={handleSubmit}>
+          {/* Question title with similar question suggestions */}
           <div>
             <Label htmlFor="title" className="text-purple-800">
               Question Title
@@ -146,6 +159,8 @@ export default function EnhancedAskQuestion() {
               </ul>
             )}
           </div>
+          
+          {/* Question details textarea */}
           <div>
             <Label htmlFor="details" className="text-purple-800">
               Question Details
@@ -158,6 +173,8 @@ export default function EnhancedAskQuestion() {
               className="mt-1 h-32"
             />
           </div>
+          
+          {/* Subject selection dropdown */}
           <div>
             <Label htmlFor="subject" className="text-purple-800">
               Subject
@@ -175,6 +192,8 @@ export default function EnhancedAskQuestion() {
               </SelectContent>
             </Select>
           </div>
+          
+          {/* File attachments section */}
           <div>
             <Label htmlFor="file-upload" className="text-purple-800">
               Attachments (Images or PDFs)
@@ -230,6 +249,8 @@ export default function EnhancedAskQuestion() {
               </ul>
             )}
           </div>
+          
+          {/* Submit button */}
           <Button
             type="submit"
             className="w-full bg-purple-600 hover:bg-purple-700 text-white"
@@ -240,6 +261,7 @@ export default function EnhancedAskQuestion() {
         </form>
       </div>
 
+      {/* Similar question dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent>
           <DialogHeader>

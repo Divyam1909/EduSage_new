@@ -7,6 +7,7 @@ const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
+const { cleanupOldLogs } = require('./logManager');
 
 const app = express();
 app.use(express.json());
@@ -1121,10 +1122,32 @@ app.get("/api/notifications/check", async (req, res) => {
   }
 });
 
+// Create logs directory if it doesn't exist
+const logsDir = path.join(__dirname, 'logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir);
+}
+
+// Logger utility function
+function logToFile(message, type = 'notification') {
+  const now = new Date();
+  const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+  const timestamp = now.toISOString();
+  const logFile = path.join(logsDir, `${type}-${dateStr}.log`);
+  
+  const logEntry = `[${timestamp}] ${message}\n`;
+  
+  fs.appendFile(logFile, logEntry, (err) => {
+    if (err) {
+      console.error(`Error writing to log file: ${err.message}`);
+    }
+  });
+}
+
 // Function to check and process notifications
 async function checkAndProcessNotifications() {
   const now = new Date();
-  console.log(`Checking for notifications at ${now.toISOString()}`);
+  logToFile(`Checking for notifications at ${now.toISOString()}`);
   
   // Find all events that have not had all notifications sent
   const events = await Event.find({
@@ -1135,7 +1158,7 @@ async function checkAndProcessNotifications() {
     ]
   });
   
-  console.log(`Found ${events.length} events with pending notifications`);
+  logToFile(`Found ${events.length} events with pending notifications`);
   
   for (const event of events) {
     const eventDate = new Date(event.date);
@@ -1163,7 +1186,7 @@ async function checkAndProcessNotifications() {
     // Check for day before notification
     if (event.notifications.dayBefore && !event.notificationStatus.dayBeforeSent && 
         nowStartOfDay.getTime() >= dayBeforeStartOfDay.getTime()) {
-      console.log(`Sending day-before notification for event: ${event.title}`);
+      logToFile(`Sending day-before notification for event: ${event.title}`);
       await sendNotification(event, "day-before");
       event.notificationStatus.dayBeforeSent = true;
       await event.save();
@@ -1172,7 +1195,7 @@ async function checkAndProcessNotifications() {
     // Check for day of notification (at 12:00 AM)
     if (event.notifications.dayOf && !event.notificationStatus.dayOfSent && 
         nowStartOfDay.getTime() >= eventStartOfDay.getTime()) {
-      console.log(`Sending day-of notification for event: ${event.title}`);
+      logToFile(`Sending day-of notification for event: ${event.title}`);
       await sendNotification(event, "day-of");
       event.notificationStatus.dayOfSent = true;
       await event.save();
@@ -1181,7 +1204,7 @@ async function checkAndProcessNotifications() {
     // Check for at-time notification (if time is specified)
     if (event.notifications.atTime && !event.notificationStatus.atTimeSent && 
         eventTime && now.getTime() >= eventTime.getTime()) {
-      console.log(`Sending at-time notification for event: ${event.title}`);
+      logToFile(`Sending at-time notification for event: ${event.title}`);
       await sendNotification(event, "at-time");
       event.notificationStatus.atTimeSent = true;
       await event.save();
@@ -1199,7 +1222,7 @@ async function sendNotification(event, type) {
     "at-time": `Reminder: "${event.title}" is starting now`
   }[type];
   
-  console.log(`NOTIFICATION: ${message}`);
+  logToFile(`NOTIFICATION: ${message}`);
   
   // Here you would integrate with a notification service like Firebase Cloud Messaging,
   // send emails, or use browser notifications through a service worker
@@ -1215,7 +1238,13 @@ function startNotificationChecker() {
   // Schedule checks every minute
   setInterval(checkAndProcessNotifications, 60000);
   
-  console.log("Notification checker started");
+  // Also schedule log cleanup once a day
+  setTimeout(() => {
+    cleanupOldLogs();
+    setInterval(cleanupOldLogs, 24 * 60 * 60 * 1000); // Run once every 24 hours
+  }, 60 * 60 * 1000); // Start after 1 hour
+  
+  logToFile("Notification checker started", "system");
 }
 
 const PORT = process.env.PORT || 5000;

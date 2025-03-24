@@ -1,16 +1,17 @@
 const pdfParse = require("pdf-parse");
 
 /**
- * Helper: Convert a date string like "04 January 2025" to "YYYY-MM-DD"
- * Handles various formats including ranges like "04-10 January 2025"
+ * Helper function to convert different date formats to ISO "YYYY-MM-DD" format
+ * Handles various formats including date ranges like "04-10 January 2025"
  */
 function parseDateStr(dateStr) {
   console.log("Parsing date string:", dateStr);
   
-  // Clean up the date string
+  // Clean up and split the date string into parts
   dateStr = dateStr.trim();
   const parts = dateStr.split(" ").filter(p => p);
   
+  // Ensure we have enough parts to form a complete date
   if (parts.length < 3) {
     console.log("Not enough parts in date string");
     return null;
@@ -30,9 +31,10 @@ function parseDateStr(dateStr) {
     year = parts[2];
   }
   
-  // Ensure day is padded with leading zero if needed
+  // Ensure day has leading zero if needed
   if (day.length === 1) day = "0" + day;
   
+  // Convert month name to number
   const monthNames = [
     "january", "february", "march", "april", "may", "june",
     "july", "august", "september", "october", "november", "december"
@@ -44,6 +46,7 @@ function parseDateStr(dateStr) {
     return null;
   }
   
+  // Format the date as YYYY-MM-DD
   const monthNum = (monthIndex + 1).toString().padStart(2, "0");
   const formattedDate = `${year}-${monthNum}-${day}`;
   console.log("Formatted date:", formattedDate);
@@ -51,30 +54,30 @@ function parseDateStr(dateStr) {
 }
 
 /**
- * Extracts events from the provided PDF buffer.
- * Enhanced to better handle academic calendar formats with various layouts.
+ * Main function to extract events from PDF content
+ * Parses the PDF, identifies event dates and titles, and returns structured event objects
  */
 function extractEventsFromPDF(buffer) {
   return pdfParse(buffer).then((data) => {
     console.log("PDF content extracted, processing text...");
     
-    // Remove the following characters which can interfere with text parsing
+    // Clean text to remove special characters that might interfere with parsing
     const cleanText = data.text.replace(/[^\x20-\x7E\n\r]/g, " ");
     
-    // Log a chunk of the PDF text for debugging
+    // Log a sample of the PDF text for debugging
     console.log("First 1000 characters of PDF text:");
     console.log(cleanText.substring(0, 1000));
     
-    // Try different block splitting approaches
+    // Try different approaches to split the text into meaningful blocks
     let blocks = cleanText.split(/\n\s*\n|\r\n\s*\r\n/);
     
-    // If we don't get enough blocks, try other approaches
+    // If first splitting method doesn't yield enough blocks, try alternatives
     if (blocks.length < 5) {
       console.log("Few blocks found with first method, trying alternative splitting");
       blocks = cleanText.split(/\n{2,}|\r\n{2,}/);
     }
     
-    // If still not enough blocks, try simpler line-by-line approach
+    // If still not enough blocks, use simpler line-by-line approach
     if (blocks.length < 5) {
       console.log("Still few blocks, using line-by-line approach");
       blocks = cleanText.split(/\n|\r\n/).map(line => line.trim()).filter(line => line);
@@ -84,16 +87,17 @@ function extractEventsFromPDF(buffer) {
     
     const events = [];
     
-    // Enhanced regex for more date formats found in academic calendars
+    // Regex to detect various date formats commonly found in academic calendars
     const dateRegex = /(\d{1,2}(?:-\d{1,2})?\s+[A-Za-z]+\s+\d{4}|[A-Za-z]+\s+\d{1,2}(?:-\d{1,2})?,?\s+\d{4})/i;
     
-    // Commonly used event words to identify event titles
+    // Common keywords that help identify event titles in academic calendars
     const eventKeywords = [
       "commencement", "holiday", "exam", "semester", "break", "registration", 
       "orientation", "workshop", "submission", "deadline", "meeting",
       "lecture", "ceremony", "festival", "celebration", "vacation", "recess"
     ];
     
+    // Process each text block to extract events
     blocks.forEach((block, index) => {
       // Skip empty blocks
       if (!block.trim()) return;
@@ -101,11 +105,12 @@ function extractEventsFromPDF(buffer) {
       const lines = block.split(/\n|\r\n/).map(l => l.trim()).filter(l => l);
       if (!lines.length) return;
       
+      // Log a few sample blocks for debugging
       if (index < 5) {
-        console.log(`Block ${index}:`, block.substring(0, 100)); // Log first few blocks
+        console.log(`Block ${index}:`, block.substring(0, 100));
       }
       
-      // Skip blocks that are clearly headers or not events
+      // Skip blocks that are clearly headers or non-event content
       if (/^(Sr\. No\.|Agnel Charities|Institute Academic|Term Outline|Other Activities|Activity|Date|S\. No\.|Page|Academic Calendar|INDEX|CONTENTS)/i.test(lines[0])) {
         return;
       }
@@ -116,7 +121,7 @@ function extractEventsFromPDF(buffer) {
         let dateStr = match[1];
         let title = "";
         
-        // Extract title - use the first line that's not a number, not the date, and contains some meaningful text
+        // Extract title - find first meaningful line that isn't a number or the date itself
         for (const line of lines) {
           // Skip if it's just a number, contains the date, or is too short
           if (/^\d+$/.test(line) || line.includes(dateStr) || line.length < 3) {
@@ -133,7 +138,7 @@ function extractEventsFromPDF(buffer) {
           break;
         }
         
-        // If no title was found, look for lines with event keywords
+        // If no suitable title found, look for lines with event keywords
         if (!title) {
           for (const line of lines) {
             const lowerLine = line.toLowerCase();
@@ -144,12 +149,12 @@ function extractEventsFromPDF(buffer) {
           }
         }
         
-        // If still no suitable title found, use a generic one with the date
+        // If still no title found, use a generic one with the date
         if (!title) {
           title = `Event on ${dateStr}`;
         }
         
-        // Clean and parse the date
+        // Parse and validate the date
         let parsed;
         if (dateStr.includes("-")) {
           // Handle date ranges
@@ -168,22 +173,25 @@ function extractEventsFromPDF(buffer) {
           parsed = parseDateStr(dateStr);
         }
         
+        // Skip invalid dates
         if (!parsed) {
           console.log(`Skipping block ${index} - Invalid date format: "${dateStr}"`);
           return;
         }
         
+        // Create Date object to validate the parsed date
         const d = new Date(parsed + "T00:00:00");
         if (isNaN(d.getTime())) {
           console.log(`Skipping block ${index} - Invalid date: "${parsed}"`);
           return;
         }
         
-        // Include more details from the block
+        // Include additional details from the block
         const details = lines.filter(line => line !== title).join("\n");
         
         console.log(`Found event: "${title}" on ${d.toISOString().split('T')[0]}`);
         
+        // Create and add the event object to results
         events.push({
           title: title,
           date: d.toISOString(),

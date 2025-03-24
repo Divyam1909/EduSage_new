@@ -14,7 +14,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+// Teacher interface for managing educational resources
 export default function TeacherInterface() {
+  // Initial state with sample topics and resources
   const [topics, setTopics] = useState([
     {
       name: "Arrays and Strings",
@@ -32,9 +34,11 @@ export default function TeacherInterface() {
     { name: "Dynamic Programming", expanded: false, resources: [] },
   ]);
 
+  // State for form inputs
   const [newTopic, setNewTopic] = useState("");
   const [newResource, setNewResource] = useState({ type: "pdf", name: "" });
 
+  // Add a new topic to the list
   const addTopic = () => {
     if (newTopic) {
       setTopics([
@@ -45,12 +49,14 @@ export default function TeacherInterface() {
     }
   };
 
+  // Toggle a topic's expanded state
   const toggleTopic = (index: number) => {
     const newTopics = [...topics];
     newTopics[index].expanded = !newTopics[index].expanded;
     setTopics(newTopics);
   };
 
+  // Add a new resource to a specific topic
   const addResource = (topicIndex: number) => {
     if (newResource.name) {
       const newTopics = [...topics];
@@ -60,12 +66,14 @@ export default function TeacherInterface() {
     }
   };
 
+  // Remove a resource from a topic
   const removeResource = (topicIndex: number, resourceIndex: number) => {
     const newTopics = [...topics];
     newTopics[topicIndex].resources.splice(resourceIndex, 1);
     setTopics(newTopics);
   };
 
+  // Get the appropriate icon for a resource type
   const getResourceIcon = (type: string) => {
     switch (type) {
       case "pdf":
@@ -83,6 +91,7 @@ export default function TeacherInterface() {
 
   return (
     <div className="min-h-screen bg-purple-50">
+      {/* Header with navigation */}
       <header className="bg-purple-600 text-white p-4">
         <div className="container mx-auto flex justify-between items-center">
           <h1 className="text-2xl font-bold">EduSage</h1>
@@ -100,11 +109,13 @@ export default function TeacherInterface() {
         </div>
       </header>
 
+      {/* Main content area */}
       <main className="container mx-auto mt-8 p-4">
         <h2 className="text-3xl font-bold text-purple-800 mb-6">
           Educational Resources Management
         </h2>
 
+        {/* Add new topic form */}
         <div className="mb-6">
           <h3 className="text-xl font-semibold text-purple-700 mb-2">
             Add New Topic
@@ -127,8 +138,10 @@ export default function TeacherInterface() {
           </div>
         </div>
 
+        {/* Topics and resources lists */}
         {topics.map((topic, topicIndex) => (
           <Card key={topicIndex} className="mb-4">
+            {/* Topic header with expand/collapse button */}
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-lg font-semibold text-purple-700">
                 {topic.name}
@@ -143,6 +156,7 @@ export default function TeacherInterface() {
             </CardHeader>
             {topic.expanded && (
               <CardContent>
+                {/* Add new resource form */}
                 <div className="mb-4">
                   <h4 className="font-semibold text-purple-600 mb-2">
                     Add New Resource
@@ -178,6 +192,7 @@ export default function TeacherInterface() {
                     </Button>
                   </div>
                 </div>
+                {/* Resources list */}
                 <ul>
                   {topic.resources.map((resource, resourceIndex) => (
                     <li
@@ -214,6 +229,7 @@ export default function TeacherInterface() {
         ))}
       </main>
 
+      {/* Footer */}
       <footer className="bg-purple-600 text-white p-4 mt-8">
         <div className="container mx-auto text-center">
           <p>EduSage - Empowering minds through knowledge</p>
