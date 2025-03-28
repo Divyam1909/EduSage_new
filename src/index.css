@@ -64,3 +64,29 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Loading app styles */
+.loading-app {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  width: 100vw;
+  background-color: #f5f3ff; /* Purple-50 */
+  font-size: 1.25rem;
+  color: #7e22ce; /* Purple-700 */
+  font-weight: 600;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.loading-app {
+  animation: pulse 1.5s ease-in-out infinite;
+}

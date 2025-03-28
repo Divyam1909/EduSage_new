@@ -1,5 +1,6 @@
-import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
+import React, { createContext, useState, useEffect, useCallback, useMemo, ReactNode } from "react";
 
+// Define the shape of our context type
 interface UserContextType {
   userData: any;
   setUserData: React.Dispatch<React.SetStateAction<any>>;
@@ -15,15 +16,15 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchUserData = async () => {
+  const fetchUserData = useCallback(async () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        setIsLoading(false);
-        return;
-      }
-
       const response = await fetch("http://localhost:5000/profile", {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -35,7 +36,6 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       const data = await response.json();
-      console.log("Profile data fetched in context:", data);
       setUserData(data);
       setError(null);
     } catch (err) {
@@ -44,28 +44,37 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   // Fetch user data on initial load
   useEffect(() => {
     fetchUserData();
-  }, []);
+  }, [fetchUserData]);
 
   // Provide function to manually refresh user data
-  const refreshUserData = async () => {
+  const refreshUserData = useCallback(async () => {
     await fetchUserData();
-  };
+  }, [fetchUserData]);
+
+  // Memoize context value to prevent unnecessary re-renders
+  const contextValue = useMemo(() => ({
+    userData,
+    setUserData,
+    isLoading,
+    error,
+    refreshUserData
+  }), [userData, isLoading, error, refreshUserData]);
 
   return (
-    <UserContext.Provider value={{ userData, setUserData, isLoading, error, refreshUserData }}>
+    <UserContext.Provider value={contextValue}>
       {children}
     </UserContext.Provider>
   );
 };
 
 // Custom hook to use the UserContext
-export const useUser = (): UserContextType => {
-  const context = useContext(UserContext);
+export const useUser = () => {
+  const context = React.useContext(UserContext);
   if (context === undefined) {
     throw new Error("useUser must be used within a UserProvider");
   }

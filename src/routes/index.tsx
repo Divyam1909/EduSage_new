@@ -1,5 +1,4 @@
 import Calendar from "./Calendar";
-// import CourseDashboard from "./CourseDashboard"; // Removed as file doesn't exist
 import Interface from "./Interface";
 import QuizInterface from "./QuizInterface";
 import Resources from "./Resources";
@@ -15,13 +14,11 @@ import Bookmark from "./Bookmark";
 import TeacherLogin from "./TeacherLogin";
 import TeacherForgot from "./TeacherForgot";
 import Solutions from "./Solutions";
-// import Performance from "./Performance"; // Removed as file extension is .txt not .tsx
 import Register from "./Register";
 
 // Export all route components for use in the application router
 export {
   Calendar,
-  // CourseDashboard, // Removed as file doesn't exist
   Interface,
   QuizInterface,
   Resources,
@@ -37,6 +34,5 @@ export {
   TeacherLogin,
   TeacherForgot,
   Solutions,
-  // Performance, // Removed as file extension is .txt not .tsx
   Register,
 };

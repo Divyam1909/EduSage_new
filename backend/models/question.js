@@ -12,4 +12,9 @@ const QuestionSchema = new mongoose.Schema({
   approvedAnswerId: { type: mongoose.Schema.Types.ObjectId, ref: "Answer", default: null },
 });
 
+// Add indexes for frequently queried fields to improve performance
+QuestionSchema.index({ askedAt: -1 }); // Index for sorting by date
+QuestionSchema.index({ subject: 1 }); // Index for filtering by subject
+QuestionSchema.index({ askedBy: 1 }); // Index for filtering by user
+
 module.exports = mongoose.model("Question", QuestionSchema);

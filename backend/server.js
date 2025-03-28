@@ -7,18 +7,70 @@ const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
+const compression = require("compression");
 const { cleanupOldLogs } = require('./logManager');
 
 const app = express();
-app.use(express.json());
-app.use(cors());
 
-// Serve static files from the uploads directory
-app.use('/uploads', express.static('uploads'));
+// Add compression middleware for all routes
+app.use(compression());
 
-// Connect to MongoDB
+// Body parser - increase limit and optimize json parsing
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// CORS setup with optimized settings
+app.use(cors({
+  origin: process.env.CLIENT_URL || 'http://localhost:5173', // Restrict to known origin
+  methods: ['GET', 'POST', 'PUT', 'DELETE'], // Explicitly allow methods
+  allowedHeaders: ['Content-Type', 'Authorization'], // Restrict headers
+  credentials: true // Allow credentials
+}));
+
+// Simple in-memory cache
+const cache = {
+  data: {},
+  timeout: {},
+  set: function(key, data, ttl = 60000) { // Default TTL: 60 seconds
+    this.data[key] = data;
+    clearTimeout(this.timeout[key]);
+    this.timeout[key] = setTimeout(() => {
+      delete this.data[key];
+      delete this.timeout[key];
+    }, ttl);
+  },
+  get: function(key) {
+    return this.data[key];
+  },
+  invalidate: function(key) {
+    delete this.data[key];
+    clearTimeout(this.timeout[key]);
+    delete this.timeout[key];
+  },
+  clear: function() {
+    for (const key in this.timeout) {
+      clearTimeout(this.timeout[key]);
+    }
+    this.data = {};
+    this.timeout = {};
+  }
+};
+
+// Serve static files from the uploads directory with cache control
+app.use('/uploads', express.static('uploads', {
+  maxAge: '1d', // Cache static files for 1 day
+  etag: true
+}));
+
+// Connect to MongoDB with improved connection options
 mongoose
-  .connect(process.env.MONGO_URI)
+  .connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000, // Timeout after 5s
+    socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+    family: 4 // Use IPv4, skip trying IPv6
+  })
   .then(() => {
     console.log("MongoDB connected");
     // Start the notification checker after DB connection is established
@@ -526,7 +578,22 @@ app.post("/api/questions", authenticateToken, async (req, res) => {
 
 app.get("/api/questions", async (req, res) => {
   try {
-    const questions = await Question.find().sort({ askedAt: -1 });
+    // Check cache first
+    const cacheKey = 'all_questions';
+    const cachedQuestions = cache.get(cacheKey);
+    if (cachedQuestions) {
+      return res.json(cachedQuestions);
+    }
+
+    // If not in cache, fetch from DB with lean() for better performance
+    const questions = await Question.find()
+      .sort({ askedAt: -1 })
+      .lean()
+      .exec();
+    
+    // Store in cache for 30 seconds
+    cache.set(cacheKey, questions, 30000);
+    
     res.json(questions);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -808,11 +875,20 @@ app.post("/api/profile/photo", authenticateToken, uploadHandler.single("photo"),
 // Updated to sort by wisdom points (which includes points earned from approved answers)
 app.get("/api/top-sages", async (req, res) => {
   try {
-    // Get top users by wisdom points
+    // Check cache first
+    const cacheKey = 'top_sages';
+    const cachedTopSages = cache.get(cacheKey);
+    if (cachedTopSages) {
+      return res.json(cachedTopSages);
+    }
+
+    // Get top users by wisdom points with lean() for better performance
     const topSages = await User.find()
       .sort({ wisdomPoints: -1 })
       .limit(3)
-      .select('name rollno photoUrl wisdomPoints');
+      .select('name rollno photoUrl wisdomPoints')
+      .lean()
+      .exec();
     
     // Format the response
     const formattedTopSages = topSages.map(user => ({
@@ -821,6 +897,9 @@ app.get("/api/top-sages", async (req, res) => {
       photoUrl: user.photoUrl,
       rawWisdomPoints: user.wisdomPoints
     }));
+    
+    // Cache for 1 minute
+    cache.set(cacheKey, formattedTopSages, 60000);
     
     res.json(formattedTopSages);
   } catch (error) {
@@ -920,7 +999,7 @@ app.post("/api/quizzes/:id/attempt", async (req, res) => {
   try {
     console.log("Received quiz attempt submission for quiz ID:", req.params.id);
     const { user, answers, timeTaken } = req.body;
-    const quiz = await Quiz.findById(req.params.id);
+    const quiz = await Quiz.findById(req.params.id).lean().exec();
     if (!quiz) {
       console.error("Quiz not found for ID:", req.params.id);
       return res.status(404).json({ message: "Quiz not found" });
@@ -950,6 +1029,9 @@ app.post("/api/quizzes/:id/attempt", async (req, res) => {
     
     // Recalculate wisdom points for the user
     await recalculateWisdomPoints(user);
+    
+    // Invalidate related caches
+    cache.invalidate('top_sages');
     
     res.status(201).json({ attempt: newAttempt, totalScore });
   } catch (error) {
@@ -1085,16 +1167,20 @@ async function recalculateWisdomPoints(rollno) {
     // Start with 0 wisdom points
     let wisdomPoints = 0;
     
+    // Use promise.all for parallel processing
+    const [approvedAnswers, quizAttempts, subjectMarks] = await Promise.all([
+      Answer.countDocuments({ user: rollno, approved: true }).exec(), // Count is faster than find for just counting
+      QuizAttempt.find({ user: rollno }).lean().select('totalScore').exec(),
+      SubjectMark.find({ user: rollno }).lean().exec()
+    ]);
+    
     // Add points from approved answers (20 points per approved answer)
-    const approvedAnswers = await Answer.find({ user: rollno, approved: true });
-    wisdomPoints += approvedAnswers.length * 20;
+    wisdomPoints += approvedAnswers * 20;
     
     // Add points from quiz attempts
-    const quizAttempts = await QuizAttempt.find({ user: rollno });
-    wisdomPoints += quizAttempts.reduce((sum, attempt) => sum + attempt.totalScore, 0);
+    wisdomPoints += quizAttempts.reduce((sum, attempt) => sum + (attempt.totalScore || 0), 0);
     
     // Add raw marks from subjects (all marks added directly)
-    const subjectMarks = await SubjectMark.find({ user: rollno });
     subjectMarks.forEach(mark => {
       wisdomPoints += mark.cia1 + mark.cia2 + mark.midSem + mark.endSem;
     });
@@ -1102,6 +1188,9 @@ async function recalculateWisdomPoints(rollno) {
     // Update user's wisdom points
     user.wisdomPoints = wisdomPoints;
     await user.save();
+    
+    // Invalidate related caches
+    cache.invalidate('top_sages');
     
     return wisdomPoints;
   } catch (error) {

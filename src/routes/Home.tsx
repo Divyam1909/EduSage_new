@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,20 @@ import {
 import { formatDate, getInitials, LEVELS, calculateLevel } from "@/lib/utils";
 import { useUser } from "@/context/UserContext";
 
+// API client with base URL configuration
+const apiClient = axios.create({
+  baseURL: 'http://localhost:5000',
+});
+
+// Add request interceptor to include token in all requests
+apiClient.interceptors.request.use(config => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 export default function Home() {
   const { userData, isLoading, refreshUserData } = useUser();
   const [questions, setQuestions] = useState<any[]>([]);
@@ -43,57 +57,62 @@ export default function Home() {
   const [classStats, setClassStats] = useState({ classAverageResult: 0, rank: 0 });
   // State to track if more questions should be shown
   const [showAllQuestions, setShowAllQuestions] = useState(false);
+  // Loading states for different sections
+  const [loadingQuestions, setLoadingQuestions] = useState(true);
+  const [loadingMarks, setLoadingMarks] = useState(true);
+  const [loadingSages, setLoadingSages] = useState(true);
 
   const navigate = useNavigate();
   const location = useLocation();
-  const token = localStorage.getItem("token");
 
   // Fetch top sages
   const fetchTopSages = useCallback(async () => {
-    try {
-      const res = await fetch("http://localhost:5000/api/top-sages");
-      const data = await res.json();
-      setTopSages(data);
-    } catch (err) {
-      console.error("Error fetching top sages:", err);
+    if (loadingSages) {
+      try {
+        const { data } = await apiClient.get("/api/top-sages");
+        setTopSages(data);
+      } catch (err) {
+        console.error("Error fetching top sages:", err);
+      } finally {
+        setLoadingSages(false);
+      }
     }
-  }, []);
+  }, [loadingSages]);
 
   // Fetch subject marks
   const fetchSubjectMarks = useCallback(async () => {
-    if (!token) return;
+    if (!userData || !loadingMarks) return;
     
     try {
-      const res = await fetch("http://localhost:5000/api/user/stats/subject", {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      const marks = await res.json();
-      setSubjectMarks(marks);
+      const { data } = await apiClient.get("/api/user/stats/subject");
+      setSubjectMarks(data);
     } catch (err) {
       console.error("Error fetching subject marks:", err);
+    } finally {
+      setLoadingMarks(false);
     }
-  }, [token]);
+  }, [userData, loadingMarks]);
 
   // Fetch questions from backend
   const fetchQuestions = useCallback(async () => {
-    try {
-      const response = await axios.get("http://localhost:5000/api/questions");
-      setQuestions(response.data);
-    } catch (error) {
-      console.error("Error fetching questions!", error);
+    if (loadingQuestions) {
+      try {
+        const { data } = await apiClient.get("/api/questions");
+        setQuestions(data);
+      } catch (error) {
+        console.error("Error fetching questions!", error);
+      } finally {
+        setLoadingQuestions(false);
+      }
     }
-  }, []);
+  }, [loadingQuestions]);
 
   // Fetch class results
   const fetchClassResults = useCallback(async () => {
-    if (!token || !userData) return;
+    if (!userData) return;
     
     try {
-      const res = await fetch("http://localhost:5000/api/classResults");
-      const data = await res.json();
+      const { data } = await apiClient.get("/api/classResults");
       
       // Calculate user's rank
       const userRollno = userData.rollno;
@@ -111,182 +130,113 @@ export default function Home() {
     } catch (err) {
       console.error("Error fetching class results:", err);
     }
-  }, [token, userData]);
+  }, [userData]);
 
   // Load all data when component mounts or location changes
   useEffect(() => {
-    // Refresh user data if needed from global context
-    refreshUserData();
-    
-    // Fetch other data
-    fetchTopSages();
-    fetchSubjectMarks();
-    fetchQuestions();
-  }, [refreshUserData, fetchTopSages, fetchSubjectMarks, fetchQuestions, location.key]);
-
-  // Fetch class results when user data is available
-  useEffect(() => {
+    // Fetch data only if user is logged in
     if (userData) {
+      fetchSubjectMarks();
       fetchClassResults();
     }
-  }, [userData, fetchClassResults]);
+    
+    // These can be fetched regardless of user login
+    fetchTopSages();
+    fetchQuestions();
+  }, [userData, fetchTopSages, fetchSubjectMarks, fetchQuestions, fetchClassResults, location.key]);
 
-  // Filter questions based on search query
-  const filteredQuestions = questions.filter((q) =>
-    q.title.toLowerCase().includes(searchQuery.toLowerCase())
+  // Filter questions based on search query - memoize to avoid recalculation
+  const filteredQuestions = useMemo(() => 
+    questions.filter((q) => q.title.toLowerCase().includes(searchQuery.toLowerCase())),
+    [questions, searchQuery]
   );
 
-  // Limit displayed questions to first 5 unless showAllQuestions is true
-  const displayedQuestions = showAllQuestions 
-    ? filteredQuestions 
-    : filteredQuestions.slice(0, 5);
+  // Limit displayed questions - memoize to avoid recalculation
+  const displayedQuestions = useMemo(() => 
+    showAllQuestions ? filteredQuestions : filteredQuestions.slice(0, 5),
+    [filteredQuestions, showAllQuestions]
+  );
 
-  // Compute overall result as an average percentage (each subject out of 120)
-  const overallResult = subjectMarks.length > 0
-    ? (subjectMarks.reduce(
-        (acc, mark) => acc + (mark.cia1 + mark.cia2 + mark.midSem + mark.endSem),
-        0
-      ) / (subjectMarks.length * 120)) * 100
-    : 0;
+  // Compute overall result - memoize to avoid recalculation
+  const overallResult = useMemo(() => 
+    subjectMarks.length > 0
+      ? (subjectMarks.reduce(
+          (acc, mark) => acc + (mark.cia1 + mark.cia2 + mark.midSem + mark.endSem),
+          0
+        ) / (subjectMarks.length * 120)) * 100
+      : 0,
+    [subjectMarks]
+  );
 
-  // Calculate level info based on experience (using actual wisdom points from user model)
-  const experience = userData ? userData.wisdomPoints : 0;
-  const levelInfo = calculateLevel(experience);
+  // Calculate level info - memoize to avoid recalculation
+  const levelInfo = useMemo(() => 
+    calculateLevel(userData?.wisdomPoints || 0),
+    [userData?.wisdomPoints]
+  );
 
-  // Build user profile object
-  const userProfile = {
+  // Build user profile object - memoize to avoid reconstruction
+  const userProfile = useMemo(() => ({
     name: userData?.name || "User",
-    experience,
+    experience: userData?.wisdomPoints || 0,
     wisdomPoints: userData?.wisdomPoints || 0,
     questionsAsked: userData?.questionsAsked || 0,
     questionsAnswered: userData?.questionsAnswered || 0,
     myResult: overallResult,
     classAverageResult: classStats.classAverageResult,
     rank: classStats.rank,
-  };
+  }), [userData, overallResult, classStats]);
 
-  // Notification polling: Optimize event checking
+  // Notification polling: Optimize event checking with reduced frequency
   useEffect(() => {
+    if (!userData) return;
+    
     const checkNotifications = async () => {
       try {
-        // First, check our API for pending notifications
-        const pendingRes = await axios.get("http://localhost:5000/api/notifications/pending");
-        if (pendingRes.data && pendingRes.data.length > 0) {
-          // Process any pending notifications from the server
-          pendingRes.data.forEach((notification: any) => {
-            setNotifications(prev => {
-              // Check if this notification already exists
-              const exists = prev.some(n => 
+        const { data } = await apiClient.get("/api/notifications/pending");
+        if (data && data.length > 0) {
+          // Process any pending notifications
+          setNotifications(prev => {
+            const newNotifications = data.filter(
+              (notification: any) => !prev.some(n => 
                 n.id === notification.id || 
                 (n.eventId === notification.eventId && n.type === notification.type)
-              );
-              if (!exists) {
-                // Add the notification with a unique ID and mark as unseen
-                return [...prev, {
-                  ...notification,
-                  id: notification.id || Date.now() + "_" + notification.eventId + "_" + notification.type,
-                  seen: false
-                }];
-              }
-              return prev;
-            });
+              )
+            ).map((notification: any) => ({
+              ...notification,
+              id: notification.id || Date.now() + "_" + notification.eventId + "_" + notification.type,
+              seen: false
+            }));
             
-            // Also add to toasts for immediate visibility
-            setToasts(prev => {
-              const exists = prev.some(t => 
+            return [...prev, ...newNotifications];
+          });
+          
+          // Also add to toasts for immediate visibility
+          setToasts(prev => {
+            const newToasts = data.filter(
+              (notification: any) => !prev.some(t => 
                 t.id === notification.id || 
                 (t.eventId === notification.eventId && t.type === notification.type)
-              );
-              if (!exists) {
-                return [...prev, {
-                  ...notification,
-                  id: notification.id || Date.now() + "_" + notification.eventId + "_" + notification.type,
-                  seen: false
-                }];
-              }
-              return prev;
-            });
+              )
+            ).map((notification: any) => ({
+              ...notification,
+              id: notification.id || Date.now() + "_" + notification.eventId + "_" + notification.type,
+            }));
+            
+            return [...prev, ...newToasts];
           });
         }
-        
-        // Then do the regular check for events as a fallback
-        const res = await axios.get("http://localhost:5000/api/events");
-        const events = res.data;
-        const now = new Date();
-
-        // Process notifications in a more concise way
-        const processEvents = (events: any[], updateFn: Function, notifType: string) => {
-          const newItems: any[] = [];
-          
-          events.forEach((event: any) => {
-            const eventDate = new Date(event.date);
-            const isToday = now.toDateString() === eventDate.toDateString();
-            const isTomorrow = (() => {
-              const dayBefore = new Date(eventDate);
-              dayBefore.setDate(eventDate.getDate() - 1);
-              return now.toDateString() === dayBefore.toDateString();
-            })();
-            
-            // Add "day before" notification
-            if (isTomorrow && notifType === 'notifications' && !event.notificationStatus?.dayBeforeSent) {
-              newItems.push({
-                id: Date.now() + "_" + event._id + "_dayBefore",
-                eventId: event._id,
-                message: `Reminder: "${event.title}" is tomorrow.`,
-                type: "dayBefore",
-                seen: false,
-              });
-            }
-            
-            // Add "day of" notification
-            if (isToday && !event.notificationStatus?.dayOfSent) {
-              newItems.push({
-                id: Date.now() + "_" + event._id + "_dayOf",
-                eventId: event._id,
-                message: `Reminder: "${event.title}" is today.`,
-                type: "dayOf",
-                seen: false,
-              });
-            }
-            
-            // Add "starting now" notification for events with time
-            if (event.time && notifType === 'notifications' && !event.notificationStatus?.atTimeSent) {
-              const [hours, minutes] = event.time.split(':').map(Number);
-              const eventTime = new Date(eventDate);
-              eventTime.setHours(hours, minutes, 0, 0);
-              
-              if (isToday && now >= eventTime && now <= new Date(eventTime.getTime() + 60000)) {
-                newItems.push({
-                  id: Date.now() + "_" + event._id + "_onTime",
-                  eventId: event._id,
-                  message: `Event "${event.title}" is starting now.`,
-                  type: "onTime",
-                  seen: false,
-                });
-              }
-            }
-          });
-          
-          // Update state with new items, avoiding duplicates
-          updateFn((prev: any[]) => {
-            const existing = new Set(prev.map(item => `${item.eventId}_${item.type}`));
-            const filtered = newItems.filter(item => !existing.has(`${item.eventId}_${item.type}`));
-            return [...prev, ...filtered];
-          });
-        };
-        
-        // Process notifications and toasts
-        processEvents(events, setNotifications, 'notifications');
-        processEvents(events, setToasts, 'toasts');
-      } catch (error) {
-        console.error("Error checking notifications:", error);
+      } catch (err) {
+        console.error("Error checking notifications:", err);
       }
     };
 
+    // Check notifications initially and then every 30 seconds
     checkNotifications();
-    const interval = setInterval(checkNotifications, 60000);
-    return () => clearInterval(interval);
-  }, []);
+    const intervalId = setInterval(checkNotifications, 30000);
+    
+    // Clear interval on unmount
+    return () => clearInterval(intervalId);
+  }, [userData]);
 
   // Auto-clear toasts after 5 seconds
   useEffect(() => {
@@ -302,12 +252,10 @@ export default function Home() {
   };
 
   const handleDeleteMark = async (id: string) => {
-    if (!token || !id) return;
+    if (!userData || !id) return;
     
     try {
-      await axios.delete(`http://localhost:5000/api/user/stats/subject/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await apiClient.delete(`/api/user/stats/subject/${id}`);
       setSubjectMarks(prev => prev.filter(mark => mark._id !== id));
     } catch (error) {
       console.error("Error deleting subject mark!", error);
