@@ -38,7 +38,7 @@
     "react-router-dom": "^6.26.2",
     "recharts": "^2.15.1",
     "shadcn-ui": "^0.2.3",
-    "styled-components": "^6.1.13",
+    "styled-components": "^6.1.16",
     "tabs": "^0.2.0",
     "tailwind-merge": "^2.5.2",
     "tailwindcss-animate": "^1.0.7"
