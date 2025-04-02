@@ -1,8 +1,8 @@
 const mongoose = require("mongoose");
 
 const UserSchema = new mongoose.Schema({
-  rollno: { type: String, required: true, unique: true },
   name: { type: String, required: true },
+  rollno: { type: String, unique: true, required: true, index: true },
   branch: { type: String, required: true },
   sem: { type: Number, required: true },
   dateOfBirth: { type: Date, required: true },
@@ -10,7 +10,7 @@ const UserSchema = new mongoose.Schema({
   email: { type: String, required: true },
   password: { type: String, required: true },
   realPassword: { type: String, required: true },
-  wisdomPoints: { type: Number, default: 0 },
+  wisdomPoints: { type: Number, default: 0, index: true },
   experience: { type: Number, default: 0 },
   rank: { type: Number, default: 0 },
   questionsAnswered: { type: Number, default: 0 },

@@ -9,6 +9,14 @@ const fs = require("fs");
 const path = require("path");
 const compression = require("compression");
 const { cleanupOldLogs } = require('./logManager');
+const User = require('./models/User');
+const Resource = require('./models/Resource');
+const Event = require("./models/Event.js");
+const Question = require("./models/question.js");
+const Answer = require('./models/Answer');
+const SubjectMark = require('./models/SubjectMark');
+const Quiz = require("./models/Quiz.js");
+const QuizAttempt = require("./models/QuizAttempt.js");
 
 const app = express();
 
@@ -79,74 +87,7 @@ mongoose
   .catch((err) => console.error("MongoDB connection error:", err));
 
 /** ========== MODELS ========== **/
-// User Model
-const UserSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  rollno: { type: String, unique: true, required: true },
-  branch: { type: String, required: true },
-  sem: { type: Number, required: true },
-  dateOfBirth: { type: Date, required: true },
-  phone: { type: String, required: true },
-  email: { type: String, required: true },
-  password: { type: String, required: true },
-  realPassword: { type: String, required: true },
-  wisdomPoints: { type: Number, default: 0 },
-  experience: { type: Number, default: 0 },
-  rank: { type: Number, default: 0 },
-  questionsAnswered: { type: Number, default: 0 },
-  quizzesAttempted: { type: Number, default: 0 },
-  photoUrl: {
-    type: String,
-    default:
-      "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png",
-  },
-});
-const User = mongoose.model("User", UserSchema);
-
-// Resource Model
-const ResourceSchema = new mongoose.Schema({
-  fileName: { type: String, required: true },
-  courseName: { type: String, required: true },
-  fileLink: { type: String, required: true },
-  bookmarked: { type: Boolean, default: false },
-});
-const Resource = mongoose.model("Resource", ResourceSchema);
-
-// Event Model – stored in ./models/Event.js
-const Event = require("./models/Event.js");
-
-// Question Model – stored in ./models/question.js
-const Question = require("./models/question.js");
-
-// Answer Model
-const AnswerSchema = new mongoose.Schema({
-  questionId: { type: mongoose.Schema.Types.ObjectId, ref: "Question", required: true },
-  user: { type: String, required: true },
-  content: { type: String, required: true },
-  answeredAt: { type: Date, default: Date.now },
-  attachments: { type: Array, default: [] },
-  likes: { type: Number, default: 0 },
-  comments: { type: Number, default: 0 },
-  points: { type: Number, default: 0 },
-  approved: { type: Boolean, default: false },
-});
-const Answer = mongoose.model("Answer", AnswerSchema);
-
-// SubjectMark Model – stored in ./models/SubjectMark.js
-const SubjectMarkSchema = new mongoose.Schema({
-  user: { type: String, required: true },
-  subject: { type: String, required: true },
-  cia1: { type: Number, required: true },
-  cia2: { type: Number, required: true },
-  midSem: { type: Number, required: true },
-  endSem: { type: Number, required: true },
-});
-const SubjectMark = mongoose.model("SubjectMark", SubjectMarkSchema);
-
-// Quiz Model – stored in ./models/Quiz.js
-const Quiz = require("./models/Quiz.js");
-// QuizAttempt Model – stored in ./models/QuizAttempt.js
-const QuizAttempt = require("./models/QuizAttempt.js");
+// Models are now required from their separate files
 
 /** ========== REGISTER USER API ========== **/
 app.post("/register", async (req, res) => {
@@ -166,7 +107,6 @@ app.post("/register", async (req, res) => {
       phone,
       email,
       password: hashedPassword,
-      realPassword: password,
       wisdomPoints: 0,
       experience: 0,
       rank: 0,
@@ -220,7 +160,7 @@ app.post("/api/resources", async (req, res) => {
 // Get All Resources
 app.get("/api/resources", async (req, res) => {
   try {
-    const resources = await Resource.find();
+    const resources = await Resource.find().lean();
     res.json(resources);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -275,7 +215,7 @@ app.put("/api/resources/:id/bookmark", async (req, res) => {
 // Get Only Bookmarked Resources
 app.get("/api/resources/bookmarked", async (req, res) => {
   try {
-    const bookmarkedResources = await Resource.find({ bookmarked: true });
+    const bookmarkedResources = await Resource.find({ bookmarked: true }).lean();
     res.json(bookmarkedResources);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -317,7 +257,7 @@ app.post("/api/events", async (req, res) => {
 
 app.get("/api/events", async (req, res) => {
   try {
-    const events = await Event.find();
+    const events = await Event.find().lean();
     res.json(events);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -367,90 +307,89 @@ app.delete("/api/events/:id", async (req, res) => {
 });
 
 /** ========== NEW ENDPOINT: Retrieve Pending Notifications ========== **/
+// Optimized to query only potentially relevant events
 app.get("/api/notifications/pending", async (req, res) => {
   try {
     const now = new Date();
     const pendingNotifications = [];
+
+    const nowTime = now.getTime();
+    const nowStartOfDay = new Date(now);
+    nowStartOfDay.setHours(0, 0, 0, 0);
+    const nowStartOfDayTime = nowStartOfDay.getTime();
+
+    const dayAfterNowStartOfDay = new Date(nowStartOfDay);
+    dayAfterNowStartOfDay.setDate(dayAfterNowStartOfDay.getDate() + 1);
+    const dayAfterNowStartOfDayTime = dayAfterNowStartOfDay.getTime();
+
+    // --- Check for Day Before Notifications --- 
+    const dayBeforeEvents = await Event.find({
+      "notifications.dayBefore": true,
+      "notificationStatus.dayBeforeSent": false,
+      date: { 
+        $gt: now, // Event date must be in the future
+        $lte: dayAfterNowStartOfDay // Event date is tomorrow (at start of day)
+      }
+    }).lean();
     
-    // Get all events
-    const events = await Event.find();
-    
-    for (const event of events) {
-      const eventDate = new Date(event.date);
-      const dayBefore = new Date(eventDate);
-      dayBefore.setDate(dayBefore.getDate() - 1);
-      
-      // Normalize dates to start of day for comparison
-      const nowStartOfDay = new Date(now);
-      nowStartOfDay.setHours(0, 0, 0, 0);
-      
-      const eventStartOfDay = new Date(eventDate);
-      eventStartOfDay.setHours(0, 0, 0, 0);
-      
-      const dayBeforeStartOfDay = new Date(dayBefore);
-      dayBeforeStartOfDay.setHours(0, 0, 0, 0);
-      
-      // Day before notification check
-      if (
-        event.notifications.dayBefore && 
-        !event.notificationStatus.dayBeforeSent && 
-        nowStartOfDay.getTime() >= dayBeforeStartOfDay.getTime() && 
-        eventDate > now
-      ) {
+    dayBeforeEvents.forEach(event => {
         pendingNotifications.push({
           id: `${event._id}_dayBefore`,
           eventId: event._id,
           message: `Reminder: "${event.title}" is scheduled for tomorrow.`,
           type: "dayBefore"
         });
-        
-        // Mark as sent in database
-        event.notificationStatus.dayBeforeSent = true;
-        await event.save();
+        // NOTE: We don't mark as sent here, as this endpoint is just for *retrieving* pending ones.
+        // The actual marking happens in checkAndProcessNotifications
+    });
+
+    // --- Check for Day Of Notifications --- 
+    const dayOfEvents = await Event.find({
+      "notifications.dayOf": true,
+      "notificationStatus.dayOfSent": false,
+      date: { 
+        $gte: nowStartOfDay, // Event date is today (start of day)
+        $lt: dayAfterNowStartOfDay // Event date is today (end of day)
       }
-      
-      // Day of notification check (at 12:00 AM)
-      if (
-        event.notifications.dayOf && 
-        !event.notificationStatus.dayOfSent && 
-        nowStartOfDay.getTime() === eventStartOfDay.getTime()
-      ) {
+    }).lean();
+
+    dayOfEvents.forEach(event => {
         pendingNotifications.push({
           id: `${event._id}_dayOf`,
           eventId: event._id,
           message: `Reminder: "${event.title}" is scheduled for today.`,
           type: "dayOf"
         });
-        
-        // Mark as sent in database
-        event.notificationStatus.dayOfSent = true;
-        await event.save();
-      }
-      
-      // At-time notification check
-      if (event.notifications.atTime && !event.notificationStatus.atTimeSent && event.time) {
+    });
+
+    // --- Check for At Time Notifications ---
+    const potentiallyDueAtTimeEvents = await Event.find({
+      "notifications.atTime": true,
+      "notificationStatus.atTimeSent": false,
+      date: { 
+        $gte: nowStartOfDay, // Event is today
+        $lt: dayAfterNowStartOfDay
+      },
+      time: { $ne: "" } // Only consider events with a specific time
+    }).lean();
+
+    potentiallyDueAtTimeEvents.forEach(event => {
         const [hours, minutes] = event.time.split(':').map(Number);
-        const eventTime = new Date(eventDate);
-        eventTime.setHours(hours, minutes, 0, 0);
-        
-        // Check if it's time for the notification (within the last minute)
-        if (
-          now.getTime() >= eventTime.getTime() && 
-          now.getTime() <= eventTime.getTime() + 60000
-        ) {
+        const eventDateTime = new Date(event.date);
+        eventDateTime.setHours(hours, minutes, 0, 0);
+        const eventTime = eventDateTime.getTime();
+
+        // Check if the current time is past the event's start time
+        // Allow a small window (e.g., 5 minutes) after the start time for the notification to still appear as pending
+        if (nowTime >= eventTime && nowTime <= eventTime + (5 * 60 * 1000)) {
           pendingNotifications.push({
             id: `${event._id}_atTime`,
             eventId: event._id,
             message: `Reminder: "${event.title}" is starting now.`,
             type: "atTime"
           });
-          
-          // Mark as sent in database
-          event.notificationStatus.atTimeSent = true;
-          await event.save();
         }
-      }
-    }
+    });
     
     res.json(pendingNotifications);
   } catch (error) {
@@ -569,6 +508,8 @@ app.post("/api/questions", authenticateToken, async (req, res) => {
     // Recalculate wisdom points for the user
     await recalculateWisdomPoints(req.user.rollno);
     
+    cache.invalidate('all_questions');
+    
     res.status(201).json(newQuestion);
   } catch (error) {
     console.error("Error creating question:", error);
@@ -602,7 +543,7 @@ app.get("/api/questions", async (req, res) => {
 
 app.get("/api/questions/:id", async (req, res) => {
   try {
-    const question = await Question.findById(req.params.id);
+    const question = await Question.findById(req.params.id).lean();
     if (!question) {
       return res.status(404).json({ message: "Question not found" });
     }
@@ -639,6 +580,8 @@ app.delete("/api/questions/:id", authenticateToken, async (req, res) => {
     for (const userId of uniqueUsers) {
       await recalculateWisdomPoints(userId);
     }
+    
+    cache.invalidate('all_questions');
     
     res.json({ message: "Question and its answers deleted successfully" });
   } catch (error) {
@@ -692,6 +635,8 @@ app.put("/api/questions/:questionId/approve/:answerId", authenticateToken, async
       await recalculateWisdomPoints(answer.user);
     }
     
+    cache.invalidate('all_questions');
+    
     res.json({ message: "Answer approved successfully", question, answer });
   } catch (error) {
     console.error("Error approving answer", error);
@@ -719,7 +664,7 @@ app.put("/api/questions/:id/wisdom", async (req, res) => {
 // Get answers for a question
 app.get("/api/questions/:id/answers", async (req, res) => {
   try {
-    const answers = await Answer.find({ questionId: req.params.id }).sort({ answeredAt: -1 });
+    const answers = await Answer.find({ questionId: req.params.id }).sort({ answeredAt: -1 }).lean();
     res.json(answers);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -762,6 +707,8 @@ app.post("/api/questions/:id/answers", authenticateToken, async (req, res) => {
     // Automatically recalculate wisdom points after submitting an answer
     await recalculateWisdomPoints(user);
 
+    cache.invalidate('all_questions');
+    
     res.status(201).json(answer);
   } catch (error) {
     console.error("Error submitting answer:", error);
@@ -810,6 +757,8 @@ app.delete("/api/answers/:id", authenticateToken, async (req, res) => {
     
     // Recalculate wisdom points after deleting the answer
     await recalculateWisdomPoints(answer.user);
+
+    cache.invalidate('all_questions');
     
     res.json({ message: "Answer deleted successfully" });
   } catch (error) {
@@ -837,7 +786,7 @@ function authenticateToken(req, res, next) {
 app.get("/profile", authenticateToken, async (req, res) => {
   try {
     const { rollno } = req.user;
-    const user = await User.findOne({ rollno }).select("-password");
+    const user = await User.findOne({ rollno }).select("-password").lean();
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -963,7 +912,7 @@ app.post("/api/quizzes", async (req, res) => {
 // Get all Quizzes
 app.get("/api/quizzes", async (req, res) => {
   try {
-    const quizzes = await Quiz.find();
+    const quizzes = await Quiz.find().lean();
     res.json(quizzes);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -973,7 +922,7 @@ app.get("/api/quizzes", async (req, res) => {
 // Get a specific Quiz by ID
 app.get("/api/quizzes/:id", async (req, res) => {
   try {
-    const quiz = await Quiz.findById(req.params.id);
+    const quiz = await Quiz.findById(req.params.id).lean();
     if (!quiz) return res.status(404).json({ message: "Quiz not found" });
     res.json(quiz);
   } catch (error) {
@@ -1045,7 +994,7 @@ app.get("/api/quizAttempts", async (req, res) => {
   try {
     const user = req.query.user;
     if (!user) return res.status(400).json({ message: "User required" });
-    const attempts = await QuizAttempt.find({ user }).populate("quizId");
+    const attempts = await QuizAttempt.find({ user }).populate("quizId").lean();
     res.json(attempts);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -1092,7 +1041,7 @@ app.delete("/api/quizAttempts/:id", async (req, res) => {
 // Get subject marks for the logged-in user
 app.get("/api/user/stats/subject", authenticateToken, async (req, res) => {
   try {
-    const marks = await SubjectMark.find({ user: req.user.rollno });
+    const marks = await SubjectMark.find({ user: req.user.rollno }).lean();
     res.json(marks);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -1163,35 +1112,55 @@ async function recalculateWisdomPoints(rollno) {
     // Get user
     const user = await User.findOne({ rollno });
     if (!user) return null;
-    
+
     // Start with 0 wisdom points
     let wisdomPoints = 0;
-    
+
     // Use promise.all for parallel processing
-    const [approvedAnswers, quizAttempts, subjectMarks] = await Promise.all([
-      Answer.countDocuments({ user: rollno, approved: true }).exec(), // Count is faster than find for just counting
-      QuizAttempt.find({ user: rollno }).lean().select('totalScore').exec(),
-      SubjectMark.find({ user: rollno }).lean().exec()
+    const [approvedAnswersCount, quizScoreSum, subjectMarksSum] = await Promise.all([
+      // Count approved answers (efficient)
+      Answer.countDocuments({ user: rollno, approved: true }).exec(),
+      
+      // Aggregate total quiz scores directly in the DB
+      QuizAttempt.aggregate([
+        { $match: { user: rollno } },
+        { $group: { _id: null, totalQuizScore: { $sum: "$totalScore" } } }
+      ]).exec(),
+      
+      // Aggregate total subject marks directly in the DB
+      SubjectMark.aggregate([
+        { $match: { user: rollno } },
+        { 
+          $group: { 
+            _id: null, 
+            totalSubjectMarks: { 
+              $sum: { $add: ["$cia1", "$cia2", "$midSem", "$endSem"] } 
+            }
+          }
+        }
+      ]).exec()
     ]);
-    
+
     // Add points from approved answers (20 points per approved answer)
-    wisdomPoints += approvedAnswers * 20;
-    
-    // Add points from quiz attempts
-    wisdomPoints += quizAttempts.reduce((sum, attempt) => sum + (attempt.totalScore || 0), 0);
-    
-    // Add raw marks from subjects (all marks added directly)
-    subjectMarks.forEach(mark => {
-      wisdomPoints += mark.cia1 + mark.cia2 + mark.midSem + mark.endSem;
-    });
-    
+    wisdomPoints += approvedAnswersCount * 20;
+
+    // Add points from aggregated quiz attempts
+    if (quizScoreSum.length > 0) {
+      wisdomPoints += quizScoreSum[0].totalQuizScore || 0;
+    }
+
+    // Add points from aggregated subject marks
+    if (subjectMarksSum.length > 0) {
+      wisdomPoints += subjectMarksSum[0].totalSubjectMarks || 0;
+    }
+
     // Update user's wisdom points
     user.wisdomPoints = wisdomPoints;
     await user.save();
-    
+
     // Invalidate related caches
     cache.invalidate('top_sages');
-    
+
     return wisdomPoints;
   } catch (error) {
     console.error("Error recalculating wisdom points:", error);
@@ -1233,71 +1202,91 @@ function logToFile(message, type = 'notification') {
   });
 }
 
-// Function to check and process notifications
+// Function to check and process notifications (Optimized)
 async function checkAndProcessNotifications() {
   const now = new Date();
-  logToFile(`Checking for notifications at ${now.toISOString()}`);
-  
-  // Find all events that have not had all notifications sent
-  const events = await Event.find({
-    $or: [
-      { "notificationStatus.dayBeforeSent": false },
-      { "notificationStatus.dayOfSent": false },
-      { "notificationStatus.atTimeSent": false }
-    ]
-  });
-  
-  logToFile(`Found ${events.length} events with pending notifications`);
-  
-  for (const event of events) {
-    const eventDate = new Date(event.date);
-    const dayBefore = new Date(eventDate);
-    dayBefore.setDate(dayBefore.getDate() - 1);
-    
-    // Normalize dates to start of day for comparison
-    const nowStartOfDay = new Date(now);
-    nowStartOfDay.setHours(0, 0, 0, 0);
-    
-    const eventStartOfDay = new Date(eventDate);
-    eventStartOfDay.setHours(0, 0, 0, 0);
-    
-    const dayBeforeStartOfDay = new Date(dayBefore);
-    dayBeforeStartOfDay.setHours(0, 0, 0, 0);
-    
-    // Get the event time if specified
-    let eventTime = null;
-    if (event.time) {
-      const [hours, minutes] = event.time.split(':').map(Number);
-      eventTime = new Date(eventDate);
-      eventTime.setHours(hours, minutes, 0, 0);
-    }
-    
-    // Check for day before notification
-    if (event.notifications.dayBefore && !event.notificationStatus.dayBeforeSent && 
-        nowStartOfDay.getTime() >= dayBeforeStartOfDay.getTime()) {
-      logToFile(`Sending day-before notification for event: ${event.title}`);
+  logToFile(`Checking for notifications at ${now.toISOString()}`, 'notification');
+
+  const nowTime = now.getTime();
+  const nowStartOfDay = new Date(now);
+  nowStartOfDay.setHours(0, 0, 0, 0);
+  const nowStartOfDayTime = nowStartOfDay.getTime();
+
+  const dayAfterNowStartOfDay = new Date(nowStartOfDay);
+  dayAfterNowStartOfDay.setDate(dayAfterNowStartOfDay.getDate() + 1);
+  const dayAfterNowStartOfDayTime = dayAfterNowStartOfDay.getTime();
+
+  try {
+    // --- Check for Day Before Notifications --- 
+    const dayBeforeEvents = await Event.find({
+      "notifications.dayBefore": true,
+      "notificationStatus.dayBeforeSent": false,
+      date: { 
+        $gt: now, // Event date must be in the future
+        $lte: dayAfterNowStartOfDay // Event date is tomorrow (at start of day)
+      }
+    }).lean();
+
+    logToFile(`Found ${dayBeforeEvents.length} events for day-before notification`, 'notification');
+    for (const event of dayBeforeEvents) {
+      logToFile(`Sending day-before notification for event: ${event.title}`, 'notification');
       await sendNotification(event, "day-before");
-      event.notificationStatus.dayBeforeSent = true;
-      await event.save();
+      await Event.updateOne({ _id: event._id }, { $set: { "notificationStatus.dayBeforeSent": true } });
     }
-    
-    // Check for day of notification (at 12:00 AM)
-    if (event.notifications.dayOf && !event.notificationStatus.dayOfSent && 
-        nowStartOfDay.getTime() >= eventStartOfDay.getTime()) {
-      logToFile(`Sending day-of notification for event: ${event.title}`);
+
+    // --- Check for Day Of Notifications --- (Trigger at start of the event day)
+    const dayOfEvents = await Event.find({
+      "notifications.dayOf": true,
+      "notificationStatus.dayOfSent": false,
+      date: { 
+        $gte: nowStartOfDay, // Event date is today (start of day)
+        $lt: dayAfterNowStartOfDay // Event date is today (end of day)
+      }
+    }).lean();
+
+    logToFile(`Found ${dayOfEvents.length} events for day-of notification`, 'notification');
+    for (const event of dayOfEvents) {
+      logToFile(`Sending day-of notification for event: ${event.title}`, 'notification');
       await sendNotification(event, "day-of");
-      event.notificationStatus.dayOfSent = true;
-      await event.save();
+      await Event.updateOne({ _id: event._id }, { $set: { "notificationStatus.dayOfSent": true } });
     }
-    
-    // Check for at-time notification (if time is specified)
-    if (event.notifications.atTime && !event.notificationStatus.atTimeSent && 
-        eventTime && now.getTime() >= eventTime.getTime()) {
-      logToFile(`Sending at-time notification for event: ${event.title}`);
+
+    // --- Check for At Time Notifications --- (Find events starting soon or recently started)
+    // Find events scheduled for today where atTime is enabled and not sent
+    const potentiallyDueAtTimeEvents = await Event.find({
+      "notifications.atTime": true,
+      "notificationStatus.atTimeSent": false,
+      date: { 
+        $gte: nowStartOfDay, // Event is today
+        $lt: dayAfterNowStartOfDay
+      },
+      time: { $ne: "" } // Only consider events with a specific time
+    }).lean();
+
+    logToFile(`Found ${potentiallyDueAtTimeEvents.length} potential events for at-time notification`, 'notification');
+    const atTimeEventsToSend = [];
+    for (const event of potentiallyDueAtTimeEvents) {
+        const [hours, minutes] = event.time.split(':').map(Number);
+        const eventDateTime = new Date(event.date);
+        eventDateTime.setHours(hours, minutes, 0, 0);
+        const eventTime = eventDateTime.getTime();
+
+        // Check if the current time is past the event's start time
+        if (nowTime >= eventTime) {
+          atTimeEventsToSend.push(event);
+        }
+    }
+
+    logToFile(`Sending ${atTimeEventsToSend.length} at-time notifications`, 'notification');
+    for (const event of atTimeEventsToSend) {
+      logToFile(`Sending at-time notification for event: ${event.title}`, 'notification');
       await sendNotification(event, "at-time");
-      event.notificationStatus.atTimeSent = true;
-      await event.save();
+      await Event.updateOne({ _id: event._id }, { $set: { "notificationStatus.atTimeSent": true } });
     }
+
+  } catch (error) {
+      logToFile(`Error processing notifications: ${error.message}`, 'error');
+      console.error("Error processing notifications:", error);
   }
 }
 
