@@ -73,8 +73,6 @@ app.use('/uploads', express.static('uploads', {
 // Connect to MongoDB with improved connection options
 mongoose
   .connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
     serverSelectionTimeoutMS: 5000, // Timeout after 5s
     socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
     family: 4 // Use IPv4, skip trying IPv6

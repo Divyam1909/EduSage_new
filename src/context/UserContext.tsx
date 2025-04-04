@@ -1,7 +1,7 @@
 import React, { createContext, useState, useEffect, useCallback, useMemo, ReactNode, useRef } from "react";
 
 // Minimum time the global loader should be visible (in milliseconds)
-const MIN_LOADER_DISPLAY_TIME_MS = 300; // 2 seconds
+const MIN_LOADER_DISPLAY_TIME_MS = 1;
 
 // Define the shape of our context type
 interface UserContextType {
@@ -120,6 +120,10 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     setIsLoading(true);
     try {
+      // Add a short delay for development to ensure the loader is shown
+      // Remove this in production if not needed
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
       const response = await fetch("http://localhost:5000/profile", {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -137,8 +141,8 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       console.error("Error fetching user data:", err);
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
-      setIsLoading(false);
       // Hide loader after fetching completes (will respect minimum display time)
+      setIsLoading(false);
       hideAppLoader();
     }
   }, [hideAppLoader, showAppLoader]);
@@ -150,8 +154,16 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Provide function to manually refresh user data
   const refreshUserData = useCallback(async () => {
-    await fetchUserData();
-  }, [fetchUserData]);
+    // Show loader when manually refreshing data
+    showAppLoader();
+    try {
+      await fetchUserData();
+    } catch (error) {
+      console.error("Error refreshing user data:", error);
+      // Make sure to hide loader even on error
+      hideAppLoader();
+    }
+  }, [fetchUserData, showAppLoader, hideAppLoader]);
 
   // Memoize context value to prevent unnecessary re-renders
   const contextValue = useMemo(() => ({

@@ -42,8 +42,14 @@ const Register = lazy(() => import("./routes/Register"));
 const AppContent = () => {
   const location = useLocation();
   const navigationType = useNavigationType();
-  const { isAppLoading, showAppLoader, hideAppLoader } = useUser();
+  const { isAppLoading, showAppLoader, hideAppLoader, isLoading } = useUser();
 
+  // Show loader on initial load
+  useEffect(() => {
+    // Only for initial page load
+    showAppLoader();
+  }, [showAppLoader]);
+  
   // Show loader on route changes
   useEffect(() => {
     // Only trigger on actual navigation (not on initial render)
@@ -61,7 +67,8 @@ const AppContent = () => {
 
   return (
     <>
-      {isAppLoading && (
+      {/* Show loader when app is loading or when initial data is loading */}
+      {(isAppLoading || isLoading) && (
         <StyledFallback />
       )}
       <Routes>
