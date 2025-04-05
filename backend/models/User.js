@@ -14,6 +14,7 @@ const UserSchema = new mongoose.Schema({
   experience: { type: Number, default: 0 },
   rank: { type: Number, default: 0 },
   questionsAnswered: { type: Number, default: 0 },
+  questionsAsked: { type: Number, default: 0 },
   quizzesAttempted: { type: Number, default: 0 },
   photoUrl: {
     type: String,

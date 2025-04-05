@@ -81,6 +81,9 @@ mongoose
     console.log("MongoDB connected");
     // Start the notification checker after DB connection is established
     startNotificationChecker();
+    
+    // Update questionsAsked field for all users
+    updateQuestionsAskedForAllUsers();
   })
   .catch((err) => console.error("MongoDB connection error:", err));
 
@@ -109,6 +112,7 @@ app.post("/register", async (req, res) => {
       experience: 0,
       rank: 0,
       questionsAnswered: 0,
+      questionsAsked: 0,
       quizzesAttempted: 0,
     });
     await newUser.save();
@@ -1321,6 +1325,36 @@ function startNotificationChecker() {
   }, 60 * 60 * 1000); // Start after 1 hour
   
   logToFile("Notification checker started", "system");
+}
+
+// Function to update questionsAsked field for all users
+async function updateQuestionsAskedForAllUsers() {
+  try {
+    console.log("Updating questionsAsked field for all users...");
+    
+    // Find all users
+    const users = await User.find();
+    let updatedCount = 0;
+    
+    // Process each user
+    for (const user of users) {
+      // Count questions asked by this user
+      const questionCount = await Question.countDocuments({ askedBy: user.rollno });
+      
+      // If the count doesn't match or field doesn't exist
+      if (user.questionsAsked === undefined || user.questionsAsked !== questionCount) {
+        await User.updateOne(
+          { _id: user._id },
+          { $set: { questionsAsked: questionCount } }
+        );
+        updatedCount++;
+      }
+    }
+    
+    console.log(`Updated questionsAsked field for ${updatedCount} users`);
+  } catch (error) {
+    console.error("Error updating questionsAsked field:", error);
+  }
 }
 
 const PORT = process.env.PORT || 5000;
