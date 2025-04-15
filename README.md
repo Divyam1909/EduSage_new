@@ -370,6 +370,30 @@ EduSage integrates advanced AI capabilities to enhance the learning experience:
   - Custom practice question generation for weak areas
   - Learning path suggestions based on goals and progress
 
+### AI Interview Practice
+The platform includes an AI-powered interview simulation feature that helps students prepare for job interviews:
+
+- **Personalized Interview Generation**:
+  - Custom interviews based on job role, technology stack, and experience level
+  - Mix of introductory and technical questions relevant to the specified role
+  - Real-time feedback on answers using Google's Gemini API
+
+- **Comprehensive Feedback**:
+  - Detailed evaluation of each answer with strengths and areas for improvement
+  - Overall interview assessment with scoring and recommendations
+  - Technical competence and communication skills evaluation
+
+### Setting Up Gemini API
+
+The AI Interview feature requires a Google Gemini API key to function:
+
+1. If you don't already have one, get a Gemini API key from [Google AI Studio](https://ai.google.dev/)
+2. Add your API key to the `backend/.env` file:
+   ```
+   VITE_GEMINI_API_KEY=your_gemini_api_key_here
+   ```
+3. Restart the development server
+
 ## Authentication
 
 The platform implements a robust, secure authentication system:

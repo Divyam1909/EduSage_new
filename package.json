@@ -12,6 +12,7 @@
     "clean": "rimraf dist node_modules/.vite"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.0",
     "@radix-ui/react-alert-dialog": "^1.1.6",
     "@radix-ui/react-avatar": "^1.1.0",
     "@radix-ui/react-checkbox": "^1.1.1",
