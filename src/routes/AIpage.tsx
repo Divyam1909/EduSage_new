@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
+import AudioRecorder from "@/components/AudioRecorder"
 
 // Types for interview data
 interface InterviewQuestion {
@@ -59,6 +60,11 @@ export default function Component() {
     isLoading: false,
     error: null
   })
+
+  // New state for audio mode
+  const [useAudioResponse, setUseAudioResponse] = useState(false);
+  const [audioAnalysis, setAudioAnalysis] = useState<any>(null);
+  const [audioTranscript, setAudioTranscript] = useState('');
 
   // List of available topics for filtering AI resources
   const topics = ["COA", "DLDA", "DSA", "EM", "DBMS"]
@@ -105,6 +111,99 @@ export default function Component() {
         ...interviewData,
         isLoading: false,
         error: "Failed to generate interview questions. Please try again."
+      });
+    }
+  };
+
+  // Handle audio recording complete
+  const handleAudioAnalysisComplete = (analysis: any) => {
+    setAudioAnalysis(analysis);
+    if (analysis.transcript) {
+      setAudioTranscript(analysis.transcript);
+    }
+  };
+
+  // Handle submitting an answer from audio recording
+  const handleSubmitAudioAnswer = async () => {
+    if (!audioAnalysis) {
+      return;
+    }
+
+    const currentQuestion = interviewData.questions[interviewData.currentQuestionIndex];
+    
+    setInterviewData({
+      ...interviewData,
+      isLoading: true
+    });
+
+    try {
+      // Save the answer from transcript
+      const updatedQuestions = [...interviewData.questions];
+      updatedQuestions[interviewData.currentQuestionIndex] = {
+        ...currentQuestion,
+        answer: audioTranscript
+      };
+
+      // Use the AI analysis as evaluation
+      const evaluation = {
+        score: audioAnalysis.score,
+        strengths: audioAnalysis.strengths,
+        weaknesses: audioAnalysis.weaknesses,
+        feedback: audioAnalysis.feedback,
+        nonverbal_assessment: audioAnalysis.nonverbal_assessment || "No nonverbal assessment available"
+      };
+
+      // Update the question with the evaluation
+      updatedQuestions[interviewData.currentQuestionIndex] = {
+        ...updatedQuestions[interviewData.currentQuestionIndex],
+        evaluation
+      };
+
+      // Check if this was the last question
+      const isLastQuestion = interviewData.currentQuestionIndex === interviewData.questions.length - 1;
+
+      if (isLastQuestion) {
+        // Generate overall feedback
+        const questionAnswers = updatedQuestions.map(q => ({
+          question: q.question,
+          answer: q.answer || '',
+          evaluation: q.evaluation
+        }));
+
+        const feedback = await generateOverallFeedback(
+          interviewData.jobRole,
+          interviewData.techStack,
+          interviewData.experience,
+          questionAnswers
+        );
+
+        setInterviewData({
+          ...interviewData,
+          questions: updatedQuestions,
+          overallFeedback: feedback,
+          status: 'complete',
+          isLoading: false
+        });
+      } else {
+        // Move to the next question
+        setInterviewData({
+          ...interviewData,
+          questions: updatedQuestions,
+          currentQuestionIndex: interviewData.currentQuestionIndex + 1,
+          isLoading: false
+        });
+      }
+      
+      // Reset audio states for next question
+      setAudioAnalysis(null);
+      setAudioTranscript('');
+      setUseAudioResponse(false);
+    } catch (error) {
+      console.error('Error processing audio answer:', error);
+      setInterviewData({
+        ...interviewData,
+        isLoading: false,
+        error: "Failed to process your answer. Please try again."
       });
     }
   };
@@ -511,33 +610,77 @@ export default function Component() {
                     </p>
                   </div>
                   
-                  <div className="space-y-2">
-                    <Label htmlFor="answer">Your Answer</Label>
-                    <Textarea 
-                      id="answer"
-                      placeholder="Type your answer here..."
-                      rows={5}
-                      className="w-full"
-                    />
+                  {/* Toggle between text and audio response */}
+                  <div className="flex items-center space-x-2 mb-4">
+                    <button
+                      onClick={() => setUseAudioResponse(false)}
+                      className={`px-4 py-2 rounded-lg ${!useAudioResponse ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                    >
+                      Text Response
+                    </button>
+                    <button
+                      onClick={() => setUseAudioResponse(true)}
+                      className={`px-4 py-2 rounded-lg ${useAudioResponse ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                    >
+                      Audio Response
+                    </button>
                   </div>
                   
-                  <Button 
-                    className="w-full bg-purple-600 hover:bg-purple-700"
-                    onClick={(e) => {
-                      const textarea = document.getElementById('answer') as HTMLTextAreaElement;
-                      handleSubmitAnswer(textarea.value);
-                    }}
-                    disabled={interviewData.isLoading}
-                  >
-                    {interviewData.isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      'Submit Answer'
-                    )}
-                  </Button>
+                  {!useAudioResponse ? (
+                    // Text response
+                    <div className="space-y-2">
+                      <Label htmlFor="answer">Your Answer</Label>
+                      <Textarea 
+                        id="answer"
+                        placeholder="Type your answer here..."
+                        rows={5}
+                        className="w-full"
+                      />
+                      <Button 
+                        className="w-full bg-purple-600 hover:bg-purple-700"
+                        onClick={(e) => {
+                          const textarea = document.getElementById('answer') as HTMLTextAreaElement;
+                          handleSubmitAnswer(textarea.value);
+                        }}
+                        disabled={interviewData.isLoading}
+                      >
+                        {interviewData.isLoading ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Processing...
+                          </>
+                        ) : (
+                          'Submit Answer'
+                        )}
+                      </Button>
+                    </div>
+                  ) : (
+                    // Audio response
+                    <div className="space-y-4">
+                      <AudioRecorder
+                        question={interviewData.questions[interviewData.currentQuestionIndex].question}
+                        onRecordingComplete={handleAudioAnalysisComplete}
+                        onTranscriptReceived={setAudioTranscript}
+                      />
+                      
+                      {audioAnalysis && (
+                        <Button 
+                          className="w-full bg-purple-600 hover:bg-purple-700"
+                          onClick={handleSubmitAudioAnswer}
+                          disabled={interviewData.isLoading || !audioAnalysis}
+                        >
+                          {interviewData.isLoading ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Processing...
+                            </>
+                          ) : (
+                            'Submit Audio Response'
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
               
