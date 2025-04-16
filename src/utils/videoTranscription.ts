@@ -1,4 +1,4 @@
-// Audio Transcription Service using Gemini API
+// Video Transcription Service using Gemini API
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // Initialize the Gemini API with the API key from environment variables
@@ -9,28 +9,24 @@ const genAI = new GoogleGenerativeAI(API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 /**
- * Transcribes audio content from a base64 string
- * @param audioBase64 Base64 encoded audio data
+ * Transcribes video content from a base64 string
+ * @param videoBase64 Base64 encoded video data
  * @returns Transcribed text
  */
-export const transcribeAudio = async (audioBase64: string): Promise<string> => {
+export const transcribeVideo = async (videoBase64: string): Promise<string> => {
   try {
     // Extract the mime type and actual base64 data
-    const matches = audioBase64.match(/^data:(.*);base64,(.*)$/);
+    const matches = videoBase64.match(/^data:(.*);base64,(.*)$/);
     if (!matches || matches.length !== 3) {
-      throw new Error("Invalid base64 audio format");
+      throw new Error("Invalid base64 video format");
     }
 
     const mimeType = matches[1];
     const base64Data = matches[2];
 
-    // Create an audio part for the Gemini API
-    // For now, we're using a simpler approach since Gemini doesn't directly support audio transcription
-    // We'll prompt the model to describe what it hears in the audio
-    const prompt = "Please transcribe the following audio content as accurately as possible.";
+    // Create a video part for the Gemini API
+    const prompt = "Please transcribe the speech in this video as accurately as possible.";
     
-    // Currently, direct audio transcription isn't fully supported in Gemini API
-    // This is a simplified approach - in production, consider using a dedicated speech-to-text API
     const result = await model.generateContent([
       prompt,
       {
@@ -44,34 +40,34 @@ export const transcribeAudio = async (audioBase64: string): Promise<string> => {
     const response = await result.response;
     return response.text();
   } catch (error) {
-    console.error("Error transcribing audio:", error);
+    console.error("Error transcribing video:", error);
     throw error;
   }
 };
 
 /**
- * Analyzes an audio interview response 
- * @param audioBase64 Base64 encoded audio data
+ * Analyzes a video interview response 
+ * @param videoBase64 Base64 encoded video data
  * @param question The interview question that was asked
- * @returns Analysis of the answer including feedback and transcript
+ * @returns Analysis of the answer including feedback, transcript, and visual assessment
  */
-export const analyzeAudioResponse = async (
-  audioBase64: string,
+export const analyzeVideoResponse = async (
+  videoBase64: string,
   question: string
 ): Promise<any> => {
   try {
-    // First, transcribe the audio
-    const transcription = await transcribeAudio(audioBase64);
+    // First, transcribe the video
+    const transcription = await transcribeVideo(videoBase64);
     
-    // Then analyze the transcribed response in relation to the question
+    // Then analyze the transcribed response and video content in relation to the question
     const prompt = `
       You are an expert interview coach and evaluator with years of experience helping candidates succeed in technical interviews.
       
-      Analyze the following audio response to this interview question:
+      Analyze the following video response to this interview question:
       
       QUESTION: "${question}"
       
-      CANDIDATE'S RESPONSE (transcribed from audio): "${transcription}"
+      CANDIDATE'S RESPONSE (transcribed from video): "${transcription}"
       
       Provide a comprehensive evaluation in JSON format with the following structure:
       
@@ -101,6 +97,12 @@ export const analyzeAudioResponse = async (
           "vocal_tone": "Assessment of voice modulation and clarity",
           "pauses": "Assessment of effective use of pauses and fillers"
         },
+        "visual_assessment": {
+          "body_language": "Assessment of posture and physical presence",
+          "eye_contact": "Assessment of eye contact and camera engagement",
+          "facial_expressions": "Assessment of appropriate expressions",
+          "professional_appearance": "Assessment of overall professional presentation"
+        },
         "transcript": "The raw transcript (automatically filled - leave empty)"
       }
       
@@ -109,7 +111,16 @@ export const analyzeAudioResponse = async (
       Return ONLY the JSON object, no additional text.
     `;
     
-    const result = await model.generateContent(prompt);
+    const result = await model.generateContent([
+      prompt,
+      {
+        inlineData: {
+          mimeType: videoBase64.split(';')[0].split(':')[1],
+          data: videoBase64.split(',')[1]
+        }
+      }
+    ]);
+    
     const response = await result.response;
     const text = response.text();
     
@@ -136,7 +147,7 @@ export const analyzeAudioResponse = async (
       throw new Error("Invalid response format from AI model");
     }
   } catch (error) {
-    console.error("Error analyzing audio response:", error);
+    console.error("Error analyzing video response:", error);
     throw error;
   }
 }; 

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { 
@@ -6,7 +6,9 @@ import {
   BookOpenCheck, Users, FileText, PuzzleIcon as Quiz, User, Bookmark, Calendar, 
   GraduationCap,
   Bot,
-  Loader2
+  Loader2,
+  Mic,
+  Video
 } from 'lucide-react'
 import { Link } from "react-router-dom"
 import { 
@@ -19,6 +21,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
 import AudioRecorder from "@/components/AudioRecorder"
+import VideoRecorder from "@/components/VideoRecorder"
 
 // Types for interview data
 interface InterviewQuestion {
@@ -33,6 +36,7 @@ interface InterviewData {
   jobRole: string;
   techStack: string;
   experience: string;
+  interviewMode: 'video' | 'chat';
   questions: InterviewQuestion[];
   currentQuestionIndex: number;
   overallFeedback: any;
@@ -53,6 +57,7 @@ export default function Component() {
     jobRole: '',
     techStack: '',
     experience: 'entry-level',
+    interviewMode: 'chat',
     questions: [],
     currentQuestionIndex: 0,
     overallFeedback: null,
@@ -61,13 +66,19 @@ export default function Component() {
     error: null
   })
 
-  // New state for audio mode
-  const [useAudioResponse, setUseAudioResponse] = useState(false);
+  // Response mode state (text, audio, or video)
+  const [responseMode, setResponseMode] = useState<'text' | 'audio' | 'video'>('text');
   const [audioAnalysis, setAudioAnalysis] = useState<any>(null);
-  const [audioTranscript, setAudioTranscript] = useState('');
+  const [videoAnalysis, setVideoAnalysis] = useState<any>(null);
+  const [responseTranscript, setResponseTranscript] = useState('');
 
   // List of available topics for filtering AI resources
   const topics = ["COA", "DLDA", "DSA", "EM", "DBMS"]
+
+  // Add a new confirmation modal state and media check state
+  const [isStopConfirmationOpen, setIsStopConfirmationOpen] = useState(false);
+  const [mediaCheckPassed, setMediaCheckPassed] = useState(false);
+  const [invalidFields, setInvalidFields] = useState<{jobRole?: string, techStack?: string}>({});
 
   // Handler to add or remove topics from the selected list
   const toggleTopic = (topic: string) => {
@@ -76,14 +87,100 @@ export default function Component() {
     )
   }
 
-  // Handle starting the interview
+  // Add this function to validate the job role and tech stack
+  const validateInterviewInputs = () => {
+    const errors: {jobRole?: string, techStack?: string} = {};
+    
+    // Common tech skills/languages/frameworks
+    const validTechStacks = [
+      'javascript', 'typescript', 'python', 'java', 'c#', 'c++', 'go', 'rust', 'ruby', 'php',
+      'react', 'angular', 'vue', 'svelte', 'node', 'express', 'django', 'flask', 'spring', 'asp.net',
+      'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'terraform', 'jenkins', 'git',
+      'mongodb', 'mysql', 'postgresql', 'sql server', 'oracle', 'redis', 'elasticsearch',
+      'machine learning', 'data science', 'artificial intelligence', 'deep learning', 'nlp',
+      'html', 'css', 'sass', 'less', 'tailwind', 'bootstrap', 'material-ui', 'chakra-ui',
+      'devops', 'security', 'blockchain', 'graphql', 'rest api', 'microservices'
+    ];
+    
+    // Common job roles in tech
+    const validJobRoles = [
+      'frontend developer', 'backend developer', 'fullstack developer', 'web developer', 
+      'software engineer', 'software developer', 'mobile developer', 'ios developer', 'android developer',
+      'data scientist', 'data analyst', 'data engineer', 'machine learning engineer', 'ai engineer',
+      'devops engineer', 'site reliability engineer', 'cloud engineer', 'security engineer',
+      'qa engineer', 'test engineer', 'automation engineer', 'database administrator', 'dba',
+      'product manager', 'project manager', 'scrum master', 'agile coach', 'ui designer', 'ux designer',
+      'ui/ux designer', 'graphic designer', 'technical writer', 'content developer',
+      'systems administrator', 'network engineer', 'it support', 'helpdesk technician',
+      'blockchain developer', 'game developer', 'ar/vr developer', 'embedded systems engineer'
+    ];
+    
+    // Check if the job role is valid (case insensitive)
+    const jobRoleLower = interviewData.jobRole.toLowerCase().trim();
+    if (!interviewData.jobRole) {
+      errors.jobRole = "Job role is required";
+    } else if (!validJobRoles.some(role => jobRoleLower.includes(role))) {
+      errors.jobRole = "Please enter a valid job role";
+    }
+    
+    // Check if at least one valid tech stack is mentioned
+    const techStackLower = interviewData.techStack.toLowerCase().trim();
+    if (!interviewData.techStack) {
+      errors.techStack = "Tech stack is required";
+    } else if (!validTechStacks.some(tech => techStackLower.includes(tech))) {
+      errors.techStack = "Please enter valid technologies or skills";
+    }
+    
+    setInvalidFields(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  // Add this function to check audio/video devices
+  const checkMediaDevices = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+      
+      // Audio and video tracks obtained successfully
+      const audioTrack = stream.getAudioTracks()[0];
+      const videoTrack = stream.getVideoTracks()[0];
+      
+      if (!audioTrack || !videoTrack) {
+        throw new Error("Missing required media tracks");
+      }
+      
+      // Show a preview to the user so they can verify their camera and mic
+      const videoPreview = document.getElementById('media-check-preview') as HTMLVideoElement;
+      if (videoPreview) {
+        videoPreview.srcObject = stream;
+        videoPreview.play();
+      }
+      
+      setMediaCheckPassed(true);
+      return true;
+    } catch (error) {
+      console.error('Media device check failed:', error);
+      setMediaCheckPassed(false);
+      return false;
+    }
+  };
+
+  // Handle starting the interview with validation
   const handleStartInterview = async () => {
-    if (!interviewData.jobRole || !interviewData.techStack) {
-      setInterviewData({
-        ...interviewData,
-        error: "Please fill in all required fields"
-      });
+    // First validate the inputs
+    if (!validateInterviewInputs()) {
       return;
+    }
+    
+    // For video interviews, check media devices
+    if (interviewData.interviewMode === 'video') {
+      const mediaOk = await checkMediaDevices();
+      if (!mediaOk) {
+        setInterviewData({
+          ...interviewData,
+          error: "Camera or microphone access failed. Please check your device permissions."
+        });
+        return;
+      }
     }
 
     setInterviewData({
@@ -98,6 +195,13 @@ export default function Component() {
         interviewData.techStack,
         interviewData.experience
       );
+
+      // Set appropriate response mode based on interview mode
+      if (interviewData.interviewMode === 'video') {
+        setResponseMode('video');
+      } else {
+        setResponseMode('text'); // Default to text for chat mode
+      }
 
       setInterviewData({
         ...interviewData,
@@ -119,7 +223,15 @@ export default function Component() {
   const handleAudioAnalysisComplete = (analysis: any) => {
     setAudioAnalysis(analysis);
     if (analysis.transcript) {
-      setAudioTranscript(analysis.transcript);
+      setResponseTranscript(analysis.transcript);
+    }
+  };
+
+  // Handle video recording complete
+  const handleVideoAnalysisComplete = (analysis: any) => {
+    setVideoAnalysis(analysis);
+    if (analysis.transcript) {
+      setResponseTranscript(analysis.transcript);
     }
   };
 
@@ -141,7 +253,7 @@ export default function Component() {
       const updatedQuestions = [...interviewData.questions];
       updatedQuestions[interviewData.currentQuestionIndex] = {
         ...currentQuestion,
-        answer: audioTranscript
+        answer: responseTranscript
       };
 
       // Use the AI analysis as evaluation
@@ -196,10 +308,177 @@ export default function Component() {
       
       // Reset audio states for next question
       setAudioAnalysis(null);
-      setAudioTranscript('');
-      setUseAudioResponse(false);
+      setResponseTranscript('');
+      setResponseMode('text');
     } catch (error) {
       console.error('Error processing audio answer:', error);
+      setInterviewData({
+        ...interviewData,
+        isLoading: false,
+        error: "Failed to process your answer. Please try again."
+      });
+    }
+  };
+
+  // Add this helper function just before the handleSubmitVideoAnswer function
+  // This ensures all camera and microphone resources are properly released
+  const stopAllMediaTracks = () => {
+    console.log("Stopping all media tracks");
+    
+    // First, stop any tracks from video elements with srcObject
+    const allVideoElements = document.querySelectorAll('video');
+    allVideoElements.forEach(video => {
+      if (video.srcObject instanceof MediaStream) {
+        const stream = video.srcObject as MediaStream;
+        stream.getTracks().forEach(track => {
+          console.log(`Stopping track: ${track.kind}`);
+          track.stop();
+        });
+        video.srcObject = null;
+        video.load(); // Force reload to clear any buffered content
+      }
+    });
+    
+    // Also check for any audio elements with srcObject
+    const allAudioElements = document.querySelectorAll('audio');
+    allAudioElements.forEach(audio => {
+      if (audio.srcObject instanceof MediaStream) {
+        const stream = audio.srcObject as MediaStream;
+        stream.getTracks().forEach(track => track.stop());
+        audio.srcObject = null;
+      }
+    });
+    
+    // Finally, try to get any active user media and stop those tracks too
+    navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+      .then(stream => {
+        stream.getTracks().forEach(track => track.stop());
+      })
+      .catch(err => {
+        // This error is expected if no media is active, so we can ignore it
+      });
+  };
+
+  // Handle submitting an answer from video recording
+  const handleSubmitVideoAnswer = async () => {
+    if (!videoAnalysis) {
+      return;
+    }
+
+    const currentQuestion = interviewData.questions[interviewData.currentQuestionIndex];
+    
+    setInterviewData({
+      ...interviewData,
+      isLoading: true
+    });
+
+    try {
+      // Save the answer from transcript
+      const updatedQuestions = [...interviewData.questions];
+      updatedQuestions[interviewData.currentQuestionIndex] = {
+        ...currentQuestion,
+        answer: responseTranscript
+      };
+
+      // Use the AI analysis as evaluation
+      const evaluation = {
+        score: videoAnalysis.score,
+        strengths: videoAnalysis.strengths,
+        weaknesses: videoAnalysis.weaknesses,
+        feedback: videoAnalysis.feedback,
+        nonverbal_assessment: videoAnalysis.nonverbal_assessment || "No nonverbal assessment available",
+        visual_assessment: videoAnalysis.visual_assessment || "No visual assessment available"
+      };
+
+      // Update the question with the evaluation
+      updatedQuestions[interviewData.currentQuestionIndex] = {
+        ...updatedQuestions[interviewData.currentQuestionIndex],
+        evaluation
+      };
+
+      // Check if this was the last question
+      const isLastQuestion = interviewData.currentQuestionIndex === interviewData.questions.length - 1;
+
+      // Reset video states for next question - do this BEFORE changing the question
+      setVideoAnalysis(null);
+      setResponseTranscript('');
+      
+      // Clear any video playback elements
+      const videosElements = document.querySelectorAll('video[controls]');
+      videosElements.forEach(video => {
+        if (video.parentElement && !video.hasAttribute('ref')) {
+          // Hide the entire review section to clean up the UI
+          video.parentElement.style.display = 'none';
+        }
+      });
+      
+      // Also clear any transcript display elements
+      const transcriptElements = document.querySelectorAll('.transcript-container');
+      transcriptElements.forEach(elem => {
+        if (elem.parentElement) {
+          elem.parentElement.style.display = 'none';
+        }
+      });
+
+      if (isLastQuestion) {
+        // If it's the last question, stop all camera streams before generating feedback
+        stopAllMediaTracks();
+
+        // Hide the video recorder completely after last question
+        const videoRecorderContainer = document.querySelector('.video-preview')?.closest('.flex.flex-col');
+        if (videoRecorderContainer instanceof HTMLElement) {
+          videoRecorderContainer.style.display = 'none';
+        }
+        
+        // First update UI to show we're generating feedback
+        setInterviewData({
+          ...interviewData,
+          questions: updatedQuestions,
+          status: 'feedback',
+          isLoading: true
+        });
+        
+        try {
+          // Generate overall feedback
+          const questionAnswers = updatedQuestions.map(q => ({
+            question: q.question,
+            answer: q.answer || '',
+            evaluation: q.evaluation
+          }));
+
+          const feedback = await generateOverallFeedback(
+            interviewData.jobRole,
+            interviewData.techStack,
+            interviewData.experience,
+            questionAnswers
+          );
+
+          // Once feedback is ready, update to complete state
+          setInterviewData(prevState => ({
+            ...prevState,
+            overallFeedback: feedback,
+            status: 'complete',
+            isLoading: false
+          }));
+        } catch (error) {
+          console.error('Error generating feedback:', error);
+          setInterviewData(prevState => ({
+            ...prevState,
+            error: "Failed to generate feedback. Please try again.",
+            isLoading: false
+          }));
+        }
+      } else {
+        // Move to the next question AFTER clearing states
+        setInterviewData({
+          ...interviewData,
+          questions: updatedQuestions,
+          currentQuestionIndex: interviewData.currentQuestionIndex + 1,
+          isLoading: false
+        });
+      }
+    } catch (error) {
+      console.error('Error processing video answer:', error);
       setInterviewData({
         ...interviewData,
         isLoading: false,
@@ -293,6 +572,7 @@ export default function Component() {
       jobRole: '',
       techStack: '',
       experience: 'entry-level',
+      interviewMode: 'chat',
       questions: [],
       currentQuestionIndex: 0,
       overallFeedback: null,
@@ -300,6 +580,55 @@ export default function Component() {
       isLoading: false,
       error: null
     });
+    setResponseMode('text');
+    setAudioAnalysis(null);
+    setVideoAnalysis(null);
+    setResponseTranscript('');
+  };
+
+  // Add a useEffect hook to monitor the interviewData.status changes and close camera when feedback is complete
+  // Place this near other useEffect hooks in the component
+  useEffect(() => {
+    // When the interview status changes to 'complete', ensure all media tracks are stopped
+    if (interviewData.status === 'complete') {
+      console.log("Interview complete, stopping all media tracks");
+      stopAllMediaTracks();
+      
+      // Hide any video container elements
+      const videoContainers = document.querySelectorAll('.video-preview');
+      videoContainers.forEach(container => {
+        const parentElement = container.closest('.flex.flex-col');
+        if (parentElement instanceof HTMLElement) {
+          parentElement.style.display = 'none';
+        }
+      });
+    }
+  }, [interviewData.status]);
+
+  // Now create a collapsible component that we'll use for the feedback sections
+  const CollapsibleSection = ({ title, defaultOpen = false, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) => {
+    const [isOpen, setIsOpen] = useState(defaultOpen);
+    
+    return (
+      <div className="border border-purple-200 rounded-lg mb-4 overflow-hidden">
+        <button 
+          className="w-full p-3 bg-purple-50 flex justify-between items-center text-left"
+          onClick={() => setIsOpen(!isOpen)}
+        >
+          <h4 className="font-medium text-purple-800">{title}</h4>
+          <div className={`transform transition-transform ${isOpen ? 'rotate-180' : ''}`}>
+            <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M1 1L6 6L11 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+          </div>
+        </button>
+        <div className={`transition-all duration-300 ${isOpen ? 'max-h-screen opacity-100 overflow-y-auto' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+          <div className="p-4">
+            {children}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -507,18 +836,28 @@ export default function Component() {
       {/* Interview Modal */}
       {isInterviewModalOpen && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-auto">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] overflow-auto">
             <div className="flex justify-between items-center p-4 border-b border-gray-200">
               <h2 className="text-xl font-bold text-purple-800">AI Interview Practice</h2>
-              <Button 
-                variant="ghost" 
-                onClick={() => {
-                  setIsInterviewModalOpen(false);
-                  resetInterview();
-                }}
-              >
-                Close
-              </Button>
+              {interviewData.status !== 'complete' && (
+                <Button 
+                  variant={interviewData.status === 'setup' ? 'ghost' : 'destructive'}
+                  className={interviewData.status !== 'setup' ? 'bg-red-600 hover:bg-red-700 text-white' : ''}
+                  onClick={() => {
+                    if (interviewData.status === 'setup') {
+                      // If in setup stage, just close without confirmation
+                      stopAllMediaTracks();
+                      setIsInterviewModalOpen(false);
+                      resetInterview();
+                    } else {
+                      // If interview in progress, show confirmation
+                      setIsStopConfirmationOpen(true);
+                    }
+                  }}
+                >
+                  {interviewData.status === 'setup' ? 'Close' : 'Stop Interview'}
+                </Button>
+              )}
             </div>
             
             <div className="p-6">
@@ -540,7 +879,11 @@ export default function Component() {
                       value={interviewData.jobRole}
                       onChange={(e) => setInterviewData({...interviewData, jobRole: e.target.value})}
                       placeholder="e.g., Frontend Developer, Data Scientist"
+                      className={invalidFields.jobRole ? "border-red-500" : ""}
                     />
+                    {invalidFields.jobRole && (
+                      <p className="text-red-500 text-sm mt-1">{invalidFields.jobRole}</p>
+                    )}
                   </div>
                   
                   <div className="space-y-2">
@@ -550,7 +893,11 @@ export default function Component() {
                       value={interviewData.techStack}
                       onChange={(e) => setInterviewData({...interviewData, techStack: e.target.value})}
                       placeholder="e.g., React, Node.js, Python"
+                      className={invalidFields.techStack ? "border-red-500" : ""}
                     />
+                    {invalidFields.techStack && (
+                      <p className="text-red-500 text-sm mt-1">{invalidFields.techStack}</p>
+                    )}
                   </div>
                   
                   <div className="space-y-2">
@@ -567,10 +914,75 @@ export default function Component() {
                     </select>
                   </div>
                   
+                  <div className="space-y-2">
+                    <Label>Interview Format</Label>
+                    <div className="flex space-x-4">
+                      <Button
+                        type="button"
+                        variant={interviewData.interviewMode === 'chat' ? 'default' : 'outline'}
+                        className={interviewData.interviewMode === 'chat' ? 'bg-purple-600 hover:bg-purple-700' : ''}
+                        onClick={() => setInterviewData({...interviewData, interviewMode: 'chat'})}
+                      >
+                        <MessageSquare className="mr-2 h-4 w-4" />
+                        Chat Interview
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={interviewData.interviewMode === 'video' ? 'default' : 'outline'}
+                        className={interviewData.interviewMode === 'video' ? 'bg-purple-600 hover:bg-purple-700' : ''}
+                        onClick={() => setInterviewData({...interviewData, interviewMode: 'video'})}
+                      >
+                        <Video className="mr-2 h-4 w-4" />
+                        Video Interview
+                      </Button>
+                    </div>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {interviewData.interviewMode === 'chat' 
+                        ? 'Chat interview allows you to respond with text or audio.' 
+                        : 'Video interview requires you to respond with video, providing both verbal and non-verbal feedback.'}
+                    </p>
+                  </div>
+                  
+                  {/* Add media check for video interviews */}
+                  {interviewData.interviewMode === 'video' && (
+                    <div className="mt-4 p-4 border border-purple-200 rounded-lg">
+                      <h4 className="font-medium text-purple-800 mb-3">Camera and Microphone Check</h4>
+                      <p className="text-sm text-gray-600 mb-4">
+                        Please verify that your camera and microphone are working correctly before starting the interview.
+                      </p>
+                      
+                      <div className="flex flex-col items-center mb-4">
+                        <video 
+                          id="media-check-preview" 
+                          className="w-full max-w-md h-60 bg-gray-100 rounded mb-2 object-cover"
+                          muted
+                          playsInline
+                        ></video>
+                        
+                        <Button
+                          className="bg-purple-500 hover:bg-purple-600 text-white"
+                          onClick={checkMediaDevices}
+                        >
+                          <Video className="mr-2 h-4 w-4" />
+                          Check Camera & Mic
+                        </Button>
+                        
+                        {mediaCheckPassed && (
+                          <p className="text-green-600 text-sm mt-2 flex items-center">
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            Camera and microphone are working
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
                   <Button 
                     className="w-full bg-purple-600 hover:bg-purple-700"
                     onClick={handleStartInterview}
-                    disabled={interviewData.isLoading}
+                    disabled={interviewData.isLoading || (interviewData.interviewMode === 'video' && !mediaCheckPassed)}
                   >
                     {interviewData.isLoading ? (
                       <>
@@ -610,23 +1022,36 @@ export default function Component() {
                     </p>
                   </div>
                   
-                  {/* Toggle between text and audio response */}
-                  <div className="flex items-center space-x-2 mb-4">
-                    <button
-                      onClick={() => setUseAudioResponse(false)}
-                      className={`px-4 py-2 rounded-lg ${!useAudioResponse ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-                    >
-                      Text Response
-                    </button>
-                    <button
-                      onClick={() => setUseAudioResponse(true)}
-                      className={`px-4 py-2 rounded-lg ${useAudioResponse ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-                    >
-                      Audio Response
-                    </button>
-                  </div>
+                  {/* Toggle between response modes based on interview mode */}
+                  {interviewData.interviewMode === 'chat' ? (
+                    <div className="flex items-center space-x-2 mb-4">
+                      <button
+                        onClick={() => setResponseMode('text')}
+                        className={`px-4 py-2 rounded-lg flex items-center ${responseMode === 'text' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                      >
+                        <span>Text</span>
+                      </button>
+                      <button
+                        onClick={() => setResponseMode('audio')}
+                        className={`px-4 py-2 rounded-lg flex items-center ${responseMode === 'audio' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                      >
+                        <Mic className="mr-1 h-4 w-4" />
+                        <span>Audio</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="bg-purple-100 p-3 rounded-lg mb-4">
+                      <div className="flex items-center text-purple-800">
+                        <Video className="mr-2 h-5 w-5" />
+                        <span className="font-medium">Video Interview Mode</span>
+                      </div>
+                      <p className="text-sm text-purple-700 mt-1">
+                        In video interview mode, your responses will be recorded with both video and audio to provide comprehensive feedback on your presentation and communication skills.
+                      </p>
+                    </div>
+                  )}
                   
-                  {!useAudioResponse ? (
+                  {interviewData.interviewMode === 'chat' && responseMode === 'text' && (
                     // Text response
                     <div className="space-y-2">
                       <Label htmlFor="answer">Your Answer</Label>
@@ -654,13 +1079,15 @@ export default function Component() {
                         )}
                       </Button>
                     </div>
-                  ) : (
+                  )}
+                  
+                  {interviewData.interviewMode === 'chat' && responseMode === 'audio' && (
                     // Audio response
                     <div className="space-y-4">
                       <AudioRecorder
                         question={interviewData.questions[interviewData.currentQuestionIndex].question}
                         onRecordingComplete={handleAudioAnalysisComplete}
-                        onTranscriptReceived={setAudioTranscript}
+                        onTranscriptReceived={setResponseTranscript}
                       />
                       
                       {audioAnalysis && (
@@ -681,66 +1108,328 @@ export default function Component() {
                       )}
                     </div>
                   )}
+
+                  {interviewData.interviewMode === 'video' && (
+                    // Video response - only option for video interview mode
+                    <div className="space-y-4">
+                      <VideoRecorder
+                        key={`question-${interviewData.currentQuestionIndex}`}
+                        question={interviewData.questions[interviewData.currentQuestionIndex].question}
+                        onRecordingComplete={handleVideoAnalysisComplete}
+                        onTranscriptReceived={setResponseTranscript}
+                        questionIndex={interviewData.currentQuestionIndex}
+                      />
+                      
+                      {videoAnalysis && (
+                        <Button 
+                          className="w-full bg-purple-600 hover:bg-purple-700"
+                          onClick={handleSubmitVideoAnswer}
+                          disabled={interviewData.isLoading || !videoAnalysis}
+                        >
+                          {interviewData.isLoading ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Processing...
+                            </>
+                          ) : (
+                            'Submit Video Response'
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {/* Feedback Generation Screen */}
+              {interviewData.status === 'feedback' && (
+                <div className="flex flex-col items-center justify-center space-y-8 py-12" data-state="feedback">
+                  <div className="text-center">
+                    <h3 className="text-2xl font-bold text-purple-800 mb-4">
+                      Interview Complete!
+                    </h3>
+                    <p className="text-lg text-purple-700 mb-6">
+                      Thank you for completing your {interviewData.interviewMode} interview for the {interviewData.jobRole} position.
+                    </p>
+                  </div>
+                  
+                  <div className="bg-purple-50 rounded-lg p-6 w-full max-w-xl">
+                    <div className="flex items-center justify-center mb-4">
+                      <Loader2 className="w-10 h-10 text-purple-600 animate-spin mr-4" />
+                      <div>
+                        <h4 className="text-lg font-medium text-purple-800">Generating Your Assessment</h4>
+                        <p className="text-sm text-purple-600">
+                          Our AI is analyzing your interview responses and preparing detailed feedback...
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-3 mt-6">
+                      <p className="text-sm text-gray-600">
+                        <span className="font-medium">Analyzing:</span> Communication style, technical knowledge, problem-solving approach
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        <span className="font-medium">Evaluating:</span> Strengths, areas for improvement, and overall performance
+                      </p>
+                      {interviewData.interviewMode === 'video' && (
+                        <p className="text-sm text-gray-600">
+                          <span className="font-medium">Processing:</span> Visual presentation, body language, and non-verbal communication
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
               
               {/* Interview Feedback */}
               {interviewData.status === 'complete' && interviewData.overallFeedback && (
-                <div className="space-y-6">
+                <div className="space-y-6 relative">
+                  {/* Fixed close button at the top */}
+                  <div className="sticky top-0 right-0 flex justify-end z-10 mb-2">
+                    <Button 
+                      variant="destructive" 
+                      size="sm" 
+                      className="bg-red-600 hover:bg-red-700 text-white rounded-full w-8 h-8 p-0 shadow-md flex items-center justify-center"
+                      onClick={() => setIsInterviewModalOpen(false)}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 4L4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M4 4L12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </Button>
+                  </div>
+                  
                   <h3 className="text-xl font-bold text-purple-800 text-center">Interview Assessment Report</h3>
                   
                   <div className="bg-purple-50 p-6 rounded-lg">
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="text-lg font-medium">Overall Score:</span>
-                      <div className="flex items-center">
-                        <span className="text-2xl font-bold text-purple-800 mr-2">
-                          {interviewData.overallFeedback.overall_score}/10
-                        </span>
-                      </div>
+                    {/* Add interview mode indicator */}
+                    <div className="flex items-center justify-end mb-2">
+                      <span className="px-3 py-1 rounded-full bg-purple-200 text-purple-800 text-sm flex items-center">
+                        {interviewData.interviewMode === 'video' ? (
+                          <>
+                            <Video className="mr-1 h-3 w-3" />
+                            Video Interview
+                          </>
+                        ) : (
+                          <>
+                            <MessageSquare className="mr-1 h-3 w-3" />
+                            Chat Interview
+                          </>
+                        )}
+                      </span>
                     </div>
+                  
+                    {/* Overall Score Section */}
+                    <CollapsibleSection title="Overall Performance" defaultOpen={true}>
+                      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+                        <div className="bg-white rounded-lg p-4 text-center shadow-sm">
+                          <div className="text-3xl font-bold text-purple-800">
+                            {interviewData.overallFeedback.overall_score?.total || interviewData.overallFeedback.overall_score || 0}/10
+                          </div>
+                          <div className="text-sm text-gray-600">Total Score</div>
+                        </div>
+                        
+                        <div className="bg-white rounded-lg p-4 text-center shadow-sm">
+                          <div className="text-2xl font-bold text-purple-700">
+                            {interviewData.overallFeedback.overall_score?.technical_knowledge || '—'}/10
+                          </div>
+                          <div className="text-sm text-gray-600">Technical</div>
+                        </div>
+                        
+                        <div className="bg-white rounded-lg p-4 text-center shadow-sm">
+                          <div className="text-2xl font-bold text-purple-700">
+                            {interviewData.overallFeedback.overall_score?.communication || '—'}/10
+                          </div>
+                          <div className="text-sm text-gray-600">Communication</div>
+                        </div>
+                        
+                        <div className="bg-white rounded-lg p-4 text-center shadow-sm">
+                          <div className="text-2xl font-bold text-purple-700">
+                            {interviewData.overallFeedback.overall_score?.problem_solving || '—'}/10
+                          </div>
+                          <div className="text-sm text-gray-600">Problem Solving</div>
+                        </div>
+                        
+                        <div className="bg-white rounded-lg p-4 text-center shadow-sm">
+                          <div className="text-2xl font-bold text-purple-700">
+                            {interviewData.overallFeedback.overall_score?.culture_fit || '—'}/10
+                          </div>
+                          <div className="text-sm text-gray-600">Culture Fit</div>
+                        </div>
+                      </div>
+                      
+                      <div className="bg-white p-4 rounded-lg border border-purple-100">
+                        <p className="text-purple-800 font-medium mb-1">Summary</p>
+                        <p className="text-gray-700">{interviewData.overallFeedback.summary}</p>
+                      </div>
+                    </CollapsibleSection>
                     
-                    <div className="space-y-4">
-                      <div>
-                        <h4 className="font-medium text-purple-700 mb-1">Summary</h4>
-                        <p>{interviewData.overallFeedback.summary}</p>
+                    {/* Strengths and Weaknesses */}
+                    <CollapsibleSection title="Strengths & Areas for Improvement">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <h4 className="font-medium text-purple-700 mb-3 flex items-center">
+                            <span className="inline-block w-6 h-6 rounded-full bg-green-100 text-green-700 mr-2 flex items-center justify-center text-xs">+</span>
+                            Key Strengths
+                          </h4>
+                          <ul className="space-y-2">
+                            {interviewData.overallFeedback.key_strengths.map((strength: string, index: number) => (
+                              <li key={index} className="bg-white p-3 rounded-lg border-l-4 border-green-400">
+                                {strength}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                        
+                        <div>
+                          <h4 className="font-medium text-purple-700 mb-3 flex items-center">
+                            <span className="inline-block w-6 h-6 rounded-full bg-amber-100 text-amber-700 mr-2 flex items-center justify-center text-xs">!</span>
+                            Areas for Improvement
+                          </h4>
+                          <ul className="space-y-2">
+                            {interviewData.overallFeedback.key_weaknesses.map((weakness: string, index: number) => (
+                              <li key={index} className="bg-white p-3 rounded-lg border-l-4 border-amber-400">
+                                {weakness}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
                       </div>
-                      
-                      <div>
-                        <h4 className="font-medium text-purple-700 mb-1">Key Strengths</h4>
-                        <ul className="list-disc pl-5">
-                          {interviewData.overallFeedback.key_strengths.map((strength: string, index: number) => (
-                            <li key={index}>{strength}</li>
+                    </CollapsibleSection>
+                    
+                    {/* Competency Assessment */}
+                    <CollapsibleSection title="Detailed Assessment">
+                      <div className="space-y-4">
+                        <div className="bg-white p-4 rounded-lg border border-purple-100">
+                          <p className="text-purple-800 font-medium mb-1">Technical Competence</p>
+                          <p className="text-gray-700">{interviewData.overallFeedback.technical_competence}</p>
+                        </div>
+                        
+                        <div className="bg-white p-4 rounded-lg border border-purple-100">
+                          <p className="text-purple-800 font-medium mb-1">Communication Skills</p>
+                          <p className="text-gray-700">{interviewData.overallFeedback.communication_skills}</p>
+                        </div>
+                        
+                        {/* Display visual assessment if available */}
+                        {interviewData.overallFeedback.visual_presentation && (
+                          <div className="bg-white p-4 rounded-lg border border-purple-100">
+                            <p className="text-purple-800 font-medium mb-1">Visual Presentation</p>
+                            <p className="text-gray-700">{interviewData.overallFeedback.visual_presentation}</p>
+                          </div>
+                        )}
+                      </div>
+                    </CollapsibleSection>
+                    
+                    {/* Question-by-Question Feedback */}
+                    <CollapsibleSection title="Question-by-Question Feedback">
+                      <div className="space-y-4">
+                        {interviewData.questions.map((question, index) => (
+                          <div key={index} className="bg-white p-4 rounded-lg border border-purple-100 mb-4">
+                            <div className="flex justify-between items-center mb-2">
+                              <h4 className="font-medium text-purple-800">Question {index + 1}</h4>
+                              {question.evaluation && (
+                                <span className="px-2 py-1 bg-purple-100 rounded text-purple-800 text-sm">
+                                  Score: {question.evaluation.score?.overall || question.evaluation.score || 0}/10
+                                </span>
+                              )}
+                            </div>
+                            
+                            <p className="text-gray-700 mb-3">{question.question}</p>
+                            
+                            {question.answer && (
+                              <div className="mb-3">
+                                <p className="text-purple-800 font-medium text-sm mb-1">Your Answer:</p>
+                                <p className="text-gray-600 text-sm bg-gray-50 p-2 rounded">{question.answer}</p>
+                              </div>
+                            )}
+                            
+                            {question.evaluation && (
+                              <div>
+                                <p className="text-purple-800 font-medium text-sm mb-1">Feedback:</p>
+                                <p className="text-gray-700 text-sm">
+                                  {question.evaluation.feedback?.summary || question.evaluation.feedback}
+                                </p>
+                                
+                                {question.evaluation.feedback?.improvement_tips && (
+                                  <div className="mt-2">
+                                    <p className="text-purple-700 text-xs font-medium mb-1">Improvement Tips:</p>
+                                    <ul className="list-disc pl-5 text-xs text-gray-600">
+                                      {question.evaluation.feedback.improvement_tips.map((tip: string, tipIndex: number) => (
+                                        <li key={tipIndex}>{tip}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </CollapsibleSection>
+                    
+                    {/* Specific Feedback */}
+                    {interviewData.overallFeedback.question_specific_feedback && (
+                      <CollapsibleSection title="Question-Specific Insights">
+                        <div className="space-y-3">
+                          {interviewData.overallFeedback.question_specific_feedback.map((feedback: any, index: number) => (
+                            <div key={index} className="bg-white p-4 rounded-lg border border-purple-100">
+                              <p className="text-purple-800 font-medium mb-1">Question {feedback.question_number}</p>
+                              <p className="text-gray-700 mb-2"><span className="font-medium">Highlights:</span> {feedback.highlights}</p>
+                              <p className="text-gray-700"><span className="font-medium">Improvement:</span> {feedback.improvement}</p>
+                            </div>
                           ))}
-                        </ul>
+                        </div>
+                      </CollapsibleSection>
+                    )}
+                    
+                    {/* Improvement Tips */}
+                    <CollapsibleSection title="Interview Strategy & Preparation">
+                      <div className="space-y-4">
+                        {/* Interview Strategy Tips */}
+                        <div className="bg-white p-4 rounded-lg border border-purple-100">
+                          <p className="text-purple-800 font-medium mb-2">Interview Strategy Tips</p>
+                          <ul className="space-y-2">
+                            {(interviewData.overallFeedback.interview_strategy_tips || interviewData.overallFeedback.recommendations || []).map((tip: string, index: number) => (
+                              <li key={index} className="flex items-start">
+                                <span className="inline-block w-5 h-5 rounded-full bg-purple-100 text-purple-800 mr-2 flex-shrink-0 flex items-center justify-center text-xs">{index + 1}</span>
+                                <span>{tip}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                        
+                        {/* Preparation Recommendations */}
+                        {interviewData.overallFeedback.preparation_recommendations && (
+                          <div className="bg-white p-4 rounded-lg border border-purple-100">
+                            <p className="text-purple-800 font-medium mb-2">Preparation Recommendations</p>
+                            <ul className="space-y-2">
+                              {interviewData.overallFeedback.preparation_recommendations.map((rec: string, index: number) => (
+                                <li key={index} className="flex items-start">
+                                  <span className="inline-block w-5 h-5 rounded-full bg-blue-100 text-blue-800 mr-2 flex-shrink-0 flex items-center justify-center text-xs">
+                                    <BookOpen className="h-3 w-3" />
+                                  </span>
+                                  <span>{rec}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                       </div>
-                      
-                      <div>
-                        <h4 className="font-medium text-purple-700 mb-1">Areas for Improvement</h4>
-                        <ul className="list-disc pl-5">
-                          {interviewData.overallFeedback.key_weaknesses.map((weakness: string, index: number) => (
-                            <li key={index}>{weakness}</li>
-                          ))}
-                        </ul>
-                      </div>
-                      
-                      <div>
-                        <h4 className="font-medium text-purple-700 mb-1">Technical Competence</h4>
-                        <p>{interviewData.overallFeedback.technical_competence}</p>
-                      </div>
-                      
-                      <div>
-                        <h4 className="font-medium text-purple-700 mb-1">Communication Skills</h4>
-                        <p>{interviewData.overallFeedback.communication_skills}</p>
-                      </div>
-                      
-                      <div>
-                        <h4 className="font-medium text-purple-700 mb-1">Recommendations</h4>
-                        <p>{interviewData.overallFeedback.recommendations}</p>
-                      </div>
-                      
-                      <div className="border-t pt-4">
-                        <h4 className="font-medium text-purple-700 mb-1">Hire Recommendation</h4>
-                        <p className="font-bold">{interviewData.overallFeedback.hire_recommendation}</p>
+                    </CollapsibleSection>
+                    
+                    {/* Hire Recommendation */}
+                    <div className="border-t pt-4 mt-4">
+                      <h4 className="font-medium text-purple-700 mb-3">Hire Recommendation</h4>
+                      <div className="flex justify-center">
+                        <div className={`
+                          px-6 py-3 rounded-full font-bold text-lg 
+                          ${interviewData.overallFeedback.hire_recommendation.includes('Strong') ? 'bg-green-100 text-green-800' : 
+                            interviewData.overallFeedback.hire_recommendation.includes('Hire') ? 'bg-blue-100 text-blue-800' : 
+                            interviewData.overallFeedback.hire_recommendation.includes('Consider') ? 'bg-yellow-100 text-yellow-800' : 
+                            'bg-red-100 text-red-800'}
+                        `}>
+                          {interviewData.overallFeedback.hire_recommendation}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -762,6 +1451,38 @@ export default function Component() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Stop Interview Confirmation Popup */}
+      {isStopConfirmationOpen && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <h3 className="text-xl font-bold text-purple-800 mb-4">Stop Interview?</h3>
+            <p className="text-gray-700 mb-6">
+              Are you sure you want to stop the interview? Your progress will be lost and you'll need to start over.
+            </p>
+            <div className="flex space-x-4">
+              <Button 
+                variant="outline" 
+                className="flex-1"
+                onClick={() => setIsStopConfirmationOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button 
+                className="flex-1 bg-red-600 hover:bg-red-700"
+                onClick={() => {
+                  stopAllMediaTracks();
+                  setIsStopConfirmationOpen(false);
+                  setIsInterviewModalOpen(false);
+                  resetInterview();
+                }}
+              >
+                Stop Interview
+              </Button>
             </div>
           </div>
         </div>
