@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { 
@@ -45,12 +45,30 @@ interface InterviewData {
   error: string | null;
 }
 
+// Add TypeScript definition for Botpress WebChat
+declare global {
+  interface Window {
+    botpressWebChat: {
+      init: (config: any) => void;
+      sendEvent: (event: any) => void;
+    }
+  }
+}
+
 // Main component for the AI Assistant page that provides AI-powered learning tools
 export default function Component() {
   // State for managing selected topics and chat modal visibility
   const [selectedTopics, setSelectedTopics] = useState<string[]>([])
   const [isChatModalOpen, setIsChatModalOpen] = useState(false)
   const [isInterviewModalOpen, setIsInterviewModalOpen] = useState(false)
+  
+  // Chat iframe reference
+  const chatIframeRef = useRef<HTMLIFrameElement>(null);
+  
+  // Add a new confirmation modal state and media check state
+  const [isStopConfirmationOpen, setIsStopConfirmationOpen] = useState(false);
+  const [mediaCheckPassed, setMediaCheckPassed] = useState(false);
+  const [invalidFields, setInvalidFields] = useState<{jobRole?: string, techStack?: string}>({});
   
   // Interview state
   const [interviewData, setInterviewData] = useState<InterviewData>({
@@ -75,10 +93,61 @@ export default function Component() {
   // List of available topics for filtering AI resources
   const topics = ["COA", "DLDA", "DSA", "EM", "DBMS"]
 
-  // Add a new confirmation modal state and media check state
-  const [isStopConfirmationOpen, setIsStopConfirmationOpen] = useState(false);
-  const [mediaCheckPassed, setMediaCheckPassed] = useState(false);
-  const [invalidFields, setInvalidFields] = useState<{jobRole?: string, techStack?: string}>({});
+  // Add Botpress script once when component mounts
+  useEffect(() => {
+    if (!document.getElementById('botpress-script-inject')) {
+      const injectScript = document.createElement('script');
+      injectScript.id = 'botpress-script-inject';
+      injectScript.src = 'https://cdn.botpress.cloud/webchat/v2.3/inject.js';
+      injectScript.async = true;
+      document.body.appendChild(injectScript);
+    }
+    
+    if (!document.getElementById('botpress-script-custom')) {
+      const customScript = document.createElement('script');
+      customScript.id = 'botpress-script-custom';
+      customScript.src = 'https://files.bpcontent.cloud/2025/04/16/01/20250416010833-Z5K25VNT.js';
+      customScript.async = true;
+      document.body.appendChild(customScript);
+    }
+    
+    return () => {
+      // Clean up scripts if component unmounts
+      const injectScript = document.getElementById('botpress-script-inject');
+      const customScript = document.getElementById('botpress-script-custom');
+      if (injectScript) injectScript.remove();
+      if (customScript) customScript.remove();
+    };
+  }, []);
+
+  // Function to initialize and open Botpress chat
+  const openBotpressChat = () => {
+    setIsChatModalOpen(true);
+    
+    // If Botpress window object exists, initialize it
+    if (window.botpressWebChat) {
+      window.botpressWebChat.init({
+        botId: '7357020a-ba8e-40e9-a9ef-4d51cb5b00e8',
+        hostUrl: 'https://cdn.botpress.cloud/webchat/v2.3',
+        messagingUrl: 'https://messaging.botpress.cloud',
+        clientId: '7357020a-ba8e-40e9-a9ef-4d51cb5b00e8',
+        botName: 'EduSage AI Assistant',
+        avatarUrl: '/ES_logo2.png',
+        stylesheet: 'https://webchat-styler-css.botpress.app/prod/code/7b9fed71-b7ce-4aca-a03a-3172b38ff768/v39134/style.css',
+        useSessionStorage: true,
+        showConversationsButton: false,
+        enableTranscriptDownload: false,
+        closeOnEscape: true,
+        showHeaderIcon: true
+      });
+    }
+  };
+
+  // Add window.botpressWebChat type definition
+  useEffect(() => {
+    // Add type declaration for Botpress
+    window.botpressWebChat = window.botpressWebChat || {};
+  }, []);
 
   // Handler to add or remove topics from the selected list
   const toggleTopic = (topic: string) => {
@@ -757,7 +826,7 @@ export default function Component() {
           <div className="flex flex-col bg-white rounded-lg shadow-md overflow-hidden">
             <Button
               className="h-32 text-xl font-semibold bg-purple-600 hover:bg-purple-700 text-white rounded-t-lg"
-              onClick={() => setIsChatModalOpen(true)}
+              onClick={openBotpressChat}
             >
               <MessageSquare className="mr-2 h-6 w-6" />
               AI Help
@@ -768,7 +837,7 @@ export default function Component() {
               </p>
               <Button 
                 className="mt-4 bg-purple-500 hover:bg-purple-600 text-white"
-                onClick={() => setIsChatModalOpen(true)}
+                onClick={openBotpressChat}
               >
                 <HelpCircle className="mr-2 h-4 w-4" />
                 Ask AI
@@ -815,20 +884,58 @@ export default function Component() {
         )}
       </div>
 
-      {/* Chat Modal for AI Help - Uses iframe with external chatbot */}
+      {/* Chat Modal for AI Help - Updated with new Botpress integration */}
       {isChatModalOpen && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg h-full max-h-[90vh] overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200">
-              <h2 className="text-xl font-bold text-purple-800">AI Chatbot</h2>
-              <Button variant="ghost" onClick={() => setIsChatModalOpen(false)}>Close</Button>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg h-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-purple-800 text-white">
+              <div className="flex items-center">
+                <img src="/ES_logo2.png" alt="EduSage" className="w-8 h-8 mr-2" />
+                <h2 className="text-xl font-bold">EduSage AI Assistant</h2>
+              </div>
+              <Button 
+                variant="ghost" 
+                className="text-white hover:bg-purple-700"
+                onClick={() => {
+                  setIsChatModalOpen(false);
+                  // Reset chat if needed
+                  if (window.botpressWebChat && window.botpressWebChat.sendEvent) {
+                    window.botpressWebChat.sendEvent({ type: 'hide' });
+                  }
+                }}
+              >
+                Close
+              </Button>
             </div>
-            <iframe
-              src="https://cdn.botpress.cloud/webchat/v2.3/shareable.html?configUrl=https://files.bpcontent.cloud/2024/12/08/16/20241208164025-EJ1B789D.json"
-              title="AI Chatbot"
-              className="w-full h-full"
-              frameBorder="0"
-            />
+            
+            <div className="flex-1 bg-gray-50 relative">
+              {/* Botpress container - styled to match EduSage design */}
+              <div 
+                id="botpress-webchat-container"
+                className="w-full h-full"
+                style={{
+                  fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+                  // Using CSS variables through inline style object
+                  // These will be picked up by the Botpress webchat
+                  '--bp-bot-message-bg-color': '#9333ea',
+                  '--bp-bot-message-text-color': 'white',
+                  '--bp-user-message-bg-color': '#e9d5ff',
+                  '--bp-user-message-text-color': '#4b5563',
+                  '--bp-header-bg-color': '#9333ea',
+                  '--bp-header-text-color': 'white',
+                } as React.CSSProperties} 
+              />
+
+              {/* Fallback for older browsers or if script fails to load */}
+              <iframe
+                ref={chatIframeRef}
+                src={`https://cdn.botpress.cloud/webchat/v2.3/index.html?botId=7357020a-ba8e-40e9-a9ef-4d51cb5b00e8&hostUrl=https://cdn.botpress.cloud/webchat/v2.3&messagingUrl=https://messaging.botpress.cloud&clientId=7357020a-ba8e-40e9-a9ef-4d51cb5b00e8`}
+                id="botpress-webchat-iframe"
+                className="w-full h-full border-none"
+                style={{ display: 'none' }}
+                title="EduSage AI Chatbot"
+              />
+            </div>
           </div>
         </div>
       )}
