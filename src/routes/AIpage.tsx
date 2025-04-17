@@ -8,7 +8,9 @@ import {
   Bot,
   Loader2,
   Mic,
-  Video
+  Video,
+  AlertTriangle,
+  Clock
 } from 'lucide-react'
 import { Link } from "react-router-dom"
 import { 
@@ -93,22 +95,188 @@ export default function Component() {
   // List of available topics for filtering AI resources
   const topics = ["COA", "DLDA", "DSA", "EM", "DBMS"]
 
+  // Timer state variables
+  const [timeRemaining, setTimeRemaining] = useState<number>(10 * 60); // 10 minutes in seconds
+  const [isTimerRunning, setIsTimerRunning] = useState<boolean>(false);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const [isTimeUpModalOpen, setIsTimeUpModalOpen] = useState<boolean>(false);
+
+  // Tab Change End Modal
+  const [isTabEndModalOpen, setIsTabEndModalOpen] = useState(false);
+  const [tabChangeCount, setTabChangeCount] = useState(0);
+  const [isTabWarningModalOpen, setIsTabWarningModalOpen] = useState(false);
+  
+  // Add this with the other state declarations near the beginning of the component
+  const [currentAnswer, setCurrentAnswer] = useState<string>('');
+  
+  // Tab visibility detection
+  useEffect(() => {
+    // Only monitor tab changes when interview is in progress
+    if (interviewData.status === 'questions' && isTimerRunning) {
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'hidden') {
+          // User switched tabs or minimized window
+          const newCount = tabChangeCount + 1;
+          setTabChangeCount(newCount);
+          
+          if (newCount === 1) {
+            // First warning
+            setIsTabWarningModalOpen(true);
+          } else if (newCount >= 2) {
+            // Second tab change - end interview
+            console.log("Second tab change detected, ending interview");
+            setIsTabEndModalOpen(true); // Set this before calling endInterviewDueToTabChange
+            endInterviewDueToTabChange();
+          }
+        }
+      };
+      
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+    }
+  }, [interviewData.status, isTimerRunning, tabChangeCount]);
+  
+  // Function to end interview due to tab change
+  const endInterviewDueToTabChange = () => {
+    console.log("Ending interview due to tab change");
+    
+    // Stop timer
+    setIsTimerRunning(false);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    
+    // Clean up any media streams
+    stopAllMediaTracks();
+    
+    // Ensure the tab end modal is visible
+    setIsTabEndModalOpen(true);
+    
+    // Collect all current answers and questions for feedback
+    if (interviewData.questions.length > 0) {
+      const currentQuestion = interviewData.questions[interviewData.currentQuestionIndex];
+      
+      // Only proceed with feedback if we have answered at least one question
+      if (interviewData.currentQuestionIndex > 0 || currentQuestion.answer) {
+        // Prepare for overall feedback
+        setInterviewData(prev => ({
+          ...prev,
+          status: 'feedback',
+          isLoading: true
+        }));
+        
+        // Generate overall feedback with what we have
+        const questionAnswers = interviewData.questions
+          .filter(q => q.answer) // Only include questions with answers
+          .map(q => ({
+            question: q.question,
+            answer: q.answer || '',
+            evaluation: q.evaluation
+          }));
+          
+        generateOverallFeedback(
+          interviewData.jobRole,
+          interviewData.techStack,
+          interviewData.experience,
+          questionAnswers
+        )
+        .then(feedback => {
+          setInterviewData(prev => ({
+            ...prev,
+            overallFeedback: {
+              ...feedback,
+              summary: feedback.summary + " (Note: This interview was terminated because of tab change violations.)"
+            },
+            status: 'complete',
+            isLoading: false
+          }));
+          
+          // Force the tab end modal to stay visible
+          setTimeout(() => {
+            console.log("Forcing tab end modal to stay visible");
+            setIsTabEndModalOpen(true);
+          }, 100);
+        })
+        .catch(error => {
+          console.error('Error generating feedback:', error);
+          setInterviewData(prev => ({
+            ...prev,
+            error: "Failed to generate feedback due to interview interruption.",
+            status: 'complete',
+            isLoading: false
+          }));
+          
+          // Force the tab end modal to stay visible
+          setTimeout(() => {
+            setIsTabEndModalOpen(true);
+          }, 100);
+        });
+      } else {
+        // No answers yet, just reset
+        resetInterview();
+      }
+    }
+  };
+
   // Add Botpress script once when component mounts
   useEffect(() => {
+    // Create a function to initialize Botpress
+    const initializeBotpress = () => {
+      // Check if window.botpressWebChat exists and has init method
+      if (window.botpressWebChat && typeof window.botpressWebChat.init === 'function') {
+        window.botpressWebChat.init({
+          botId: '7357020a-ba8e-40e9-a9ef-4d51cb5b00e8',
+          hostUrl: 'https://cdn.botpress.cloud/webchat/v2.3',
+          messagingUrl: 'https://messaging.botpress.cloud',
+          clientId: '7357020a-ba8e-40e9-a9ef-4d51cb5b00e8',
+          botName: 'EduSage AI Assistant',
+          avatarUrl: '/ES_logo2.png',
+          stylesheet: 'https://webchat-styler-css.botpress.app/prod/code/7b9fed71-b7ce-4aca-a03a-3172b38ff768/v39134/style.css',
+          useSessionStorage: true,
+          showConversationsButton: false,
+          enableTranscriptDownload: false,
+          closeOnEscape: true,
+          showHeaderIcon: true
+        });
+        console.log('Botpress webchat initialized successfully');
+      } else {
+        console.warn('Botpress webchat not available yet, will retry on openBotpressChat');
+      }
+    };
+
+    // First load the inject script
     if (!document.getElementById('botpress-script-inject')) {
       const injectScript = document.createElement('script');
       injectScript.id = 'botpress-script-inject';
       injectScript.src = 'https://cdn.botpress.cloud/webchat/v2.3/inject.js';
       injectScript.async = true;
+      
+      // Add an onload handler to the inject script
+      injectScript.onload = () => {
+        console.log('Botpress inject script loaded');
+        
+        // Only load the custom script after inject script is loaded
+        if (!document.getElementById('botpress-script-custom')) {
+          const customScript = document.createElement('script');
+          customScript.id = 'botpress-script-custom';
+          customScript.src = 'https://files.bpcontent.cloud/2025/04/16/01/20250416010833-Z5K25VNT.js';
+          customScript.async = true;
+          
+          // Initialize Botpress after both scripts are loaded
+          customScript.onload = () => {
+            console.log('Botpress custom script loaded');
+            // Wait a moment to ensure scripts are fully processed
+            setTimeout(initializeBotpress, 500);
+          };
+          
+          document.body.appendChild(customScript);
+        }
+      };
+      
       document.body.appendChild(injectScript);
-    }
-    
-    if (!document.getElementById('botpress-script-custom')) {
-      const customScript = document.createElement('script');
-      customScript.id = 'botpress-script-custom';
-      customScript.src = 'https://files.bpcontent.cloud/2025/04/16/01/20250416010833-Z5K25VNT.js';
-      customScript.async = true;
-      document.body.appendChild(customScript);
     }
     
     return () => {
@@ -125,28 +293,50 @@ export default function Component() {
     setIsChatModalOpen(true);
     
     // If Botpress window object exists, initialize it
-    if (window.botpressWebChat) {
-      window.botpressWebChat.init({
-        botId: '7357020a-ba8e-40e9-a9ef-4d51cb5b00e8',
-        hostUrl: 'https://cdn.botpress.cloud/webchat/v2.3',
-        messagingUrl: 'https://messaging.botpress.cloud',
-        clientId: '7357020a-ba8e-40e9-a9ef-4d51cb5b00e8',
-        botName: 'EduSage AI Assistant',
-        avatarUrl: '/ES_logo2.png',
-        stylesheet: 'https://webchat-styler-css.botpress.app/prod/code/7b9fed71-b7ce-4aca-a03a-3172b38ff768/v39134/style.css',
-        useSessionStorage: true,
-        showConversationsButton: false,
-        enableTranscriptDownload: false,
-        closeOnEscape: true,
-        showHeaderIcon: true
-      });
+    if (window.botpressWebChat && typeof window.botpressWebChat.init === 'function') {
+      try {
+        window.botpressWebChat.init({
+          botId: '7357020a-ba8e-40e9-a9ef-4d51cb5b00e8',
+          hostUrl: 'https://cdn.botpress.cloud/webchat/v2.3',
+          messagingUrl: 'https://messaging.botpress.cloud',
+          clientId: '7357020a-ba8e-40e9-a9ef-4d51cb5b00e8',
+          botName: 'EduSage AI Assistant',
+          avatarUrl: '/ES_logo2.png',
+          stylesheet: 'https://webchat-styler-css.botpress.app/prod/code/7b9fed71-b7ce-4aca-a03a-3172b38ff768/v39134/style.css',
+          useSessionStorage: true,
+          showConversationsButton: false,
+          enableTranscriptDownload: false,
+          closeOnEscape: true,
+          showHeaderIcon: true
+        });
+        console.log('Botpress webchat initialized successfully from openBotpressChat');
+      } catch (error) {
+        console.error('Error initializing Botpress webchat:', error);
+      }
+    } else {
+      console.error('Botpress webchat not available. Make sure scripts are loaded.');
+      
+      // Fallback to iframe
+      const iframe = document.getElementById('botpress-webchat-iframe') as HTMLIFrameElement;
+      if (iframe) {
+        iframe.style.display = 'block';
+      }
     }
   };
 
   // Add window.botpressWebChat type definition
   useEffect(() => {
-    // Add type declaration for Botpress
-    window.botpressWebChat = window.botpressWebChat || {};
+    // Create botpressWebChat object if it doesn't exist
+    if (!window.botpressWebChat) {
+      window.botpressWebChat = {
+        init: function() {
+          console.warn('Botpress not yet loaded, init called before ready');
+        },
+        sendEvent: function() {
+          console.warn('Botpress not yet loaded, sendEvent called before ready');
+        }
+      };
+    }
   }, []);
 
   // Handler to add or remove topics from the selected list
@@ -271,6 +461,15 @@ export default function Component() {
       } else {
         setResponseMode('text'); // Default to text for chat mode
       }
+
+      // Reset timer and tab change count
+      setTimeRemaining(10 * 60); // 10 minutes
+      setTabChangeCount(0);
+      setIsTabWarningModalOpen(false);
+      setIsTabEndModalOpen(false);
+      
+      // Start the timer
+      setIsTimerRunning(true);
 
       setInterviewData({
         ...interviewData,
@@ -617,13 +816,16 @@ export default function Component() {
           isLoading: false
         });
       } else {
-        // Move to the next question
+        // Move to the next question and reset current answer
         setInterviewData({
           ...interviewData,
           questions: updatedQuestions,
           currentQuestionIndex: interviewData.currentQuestionIndex + 1,
           isLoading: false
         });
+        
+        // Reset the current answer when moving to next question
+        setCurrentAnswer('');
       }
     } catch (error) {
       console.error('Error processing answer:', error);
@@ -698,6 +900,99 @@ export default function Component() {
         </div>
       </div>
     );
+  };
+
+  // Helper function to format time remaining as mm:ss
+  const formatTimeRemaining = () => {
+    const minutes = Math.floor(timeRemaining / 60);
+    const seconds = timeRemaining % 60;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  // Timer functionality
+  useEffect(() => {
+    if (isTimerRunning && timeRemaining > 0) {
+      timerRef.current = setInterval(() => {
+        setTimeRemaining(prev => {
+          if (prev <= 1) {
+            // Time's up - clear the interval and end the interview
+            clearInterval(timerRef.current as NodeJS.Timeout);
+            setIsTimerRunning(false);
+            setIsTimeUpModalOpen(true);
+            // Add function to handle time-up scenario
+            handleTimeUp();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [isTimerRunning, timeRemaining]);
+
+  // Function to handle time up
+  const handleTimeUp = () => {
+    // Stop all media
+    stopAllMediaTracks();
+    
+    // Set time up modal
+    setIsTimeUpModalOpen(true);
+    
+    // Process any completed answers
+    if (interviewData.questions.length > 0) {
+      const answeredQuestions = interviewData.questions.filter(q => q.answer);
+      
+      if (answeredQuestions.length > 0) {
+        // Prepare for overall feedback
+        setInterviewData(prev => ({
+          ...prev,
+          status: 'feedback',
+          isLoading: true
+        }));
+        
+        // Generate overall feedback with what we have
+        const questionAnswers = answeredQuestions.map(q => ({
+          question: q.question,
+          answer: q.answer || '',
+          evaluation: q.evaluation
+        }));
+        
+        generateOverallFeedback(
+          interviewData.jobRole,
+          interviewData.techStack,
+          interviewData.experience,
+          questionAnswers
+        )
+        .then(feedback => {
+          setInterviewData(prev => ({
+            ...prev,
+            overallFeedback: {
+              ...feedback,
+              summary: feedback.summary + " (Note: This interview was ended because the time limit was reached.)"
+            },
+            status: 'complete',
+            isLoading: false
+          }));
+        })
+        .catch(error => {
+          console.error('Error generating feedback:', error);
+          setInterviewData(prev => ({
+            ...prev,
+            error: "Failed to generate feedback after time limit reached.",
+            status: 'complete',
+            isLoading: false
+          }));
+        });
+      } else {
+        // No answers yet, just reset
+        resetInterview();
+      }
+    }
   };
 
   return (
@@ -899,8 +1194,12 @@ export default function Component() {
                 onClick={() => {
                   setIsChatModalOpen(false);
                   // Reset chat if needed
-                  if (window.botpressWebChat && window.botpressWebChat.sendEvent) {
-                    window.botpressWebChat.sendEvent({ type: 'hide' });
+                  if (window.botpressWebChat && typeof window.botpressWebChat.sendEvent === 'function') {
+                    try {
+                      window.botpressWebChat.sendEvent({ type: 'hide' });
+                    } catch (error) {
+                      console.error('Error hiding Botpress chat:', error);
+                    }
                   }
                 }}
               >
@@ -926,7 +1225,7 @@ export default function Component() {
                 } as React.CSSProperties} 
               />
 
-              {/* Fallback for older browsers or if script fails to load */}
+              {/* Improved fallback for older browsers or if script fails to load */}
               <iframe
                 ref={chatIframeRef}
                 src={`https://cdn.botpress.cloud/webchat/v2.3/index.html?botId=7357020a-ba8e-40e9-a9ef-4d51cb5b00e8&hostUrl=https://cdn.botpress.cloud/webchat/v2.3&messagingUrl=https://messaging.botpress.cloud&clientId=7357020a-ba8e-40e9-a9ef-4d51cb5b00e8`}
@@ -934,6 +1233,15 @@ export default function Component() {
                 className="w-full h-full border-none"
                 style={{ display: 'none' }}
                 title="EduSage AI Chatbot"
+                onLoad={() => {
+                  // Check if Botpress failed to load, show iframe as fallback
+                  if (!window.botpressWebChat || typeof window.botpressWebChat.init !== 'function') {
+                    const iframe = document.getElementById('botpress-webchat-iframe') as HTMLIFrameElement;
+                    if (iframe) {
+                      iframe.style.display = 'block';
+                    }
+                  }
+                }}
               />
             </div>
           </div>
@@ -1110,9 +1418,11 @@ export default function Component() {
                     <h3 className="text-lg font-medium text-purple-800">
                       Interview Question {interviewData.currentQuestionIndex + 1} of {interviewData.questions.length}
                     </h3>
-                    <span className="text-sm text-purple-600 font-medium">
-                      {interviewData.questions[interviewData.currentQuestionIndex].type} question
-                    </span>
+                    {/* Timer display */}
+                    <div className={`flex items-center ${timeRemaining < 60 ? 'text-red-600 animate-pulse' : timeRemaining < 180 ? 'text-amber-600' : 'text-purple-600'} font-medium`}>
+                      <Clock className="mr-1 h-4 w-4" />
+                      <span>{formatTimeRemaining()}</span>
+                    </div>
                   </div>
                   
                   <Progress value={(interviewData.currentQuestionIndex / interviewData.questions.length) * 100} />
@@ -1167,12 +1477,13 @@ export default function Component() {
                         placeholder="Type your answer here..."
                         rows={5}
                         className="w-full"
+                        value={currentAnswer}
+                        onChange={(e) => setCurrentAnswer(e.target.value)}
                       />
                       <Button 
                         className="w-full bg-purple-600 hover:bg-purple-700"
                         onClick={(e) => {
-                          const textarea = document.getElementById('answer') as HTMLTextAreaElement;
-                          handleSubmitAnswer(textarea.value);
+                          handleSubmitAnswer(currentAnswer);
                         }}
                         disabled={interviewData.isLoading}
                       >
@@ -1563,6 +1874,60 @@ export default function Component() {
         </div>
       )}
       
+      {/* Tab Change End Modal */}
+      {isTabEndModalOpen && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70 z-[100]">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 border-4 border-red-500">
+            <div className="flex items-center text-red-600 mb-4">
+              <AlertTriangle className="h-10 w-10 mr-3 animate-pulse" />
+              <h3 className="text-2xl font-bold">INTERVIEW TERMINATED</h3>
+            </div>
+            <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
+              <p className="text-red-700 font-bold text-lg">Interview closed due to tab change violation</p>
+            </div>
+            <p className="text-gray-700 mb-6">
+              You have changed tabs more than once during the interview. For integrity reasons, the interview has been terminated.
+              We will process the answers you've provided so far.
+            </p>
+            <div className="flex justify-center">
+              <Button 
+                className="w-3/4 bg-red-600 hover:bg-red-700 text-white font-bold py-3 text-lg"
+                onClick={() => {
+                  setIsTabEndModalOpen(false);
+                }}
+              >
+                I Understand
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Tab Warning Modal */}
+      {isTabWarningModalOpen && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 border-2 border-amber-500">
+            <div className="flex items-center text-amber-600 mb-4">
+              <AlertTriangle className="h-8 w-8 mr-3" />
+              <h3 className="text-xl font-bold">Tab Change Warning</h3>
+            </div>
+            <div className="bg-amber-50 border-l-4 border-amber-500 p-4 mb-4">
+              <p className="text-amber-700 font-medium">First Warning: Tab Change Detected</p>
+            </div>
+            <p className="text-gray-700 mb-6">
+              You have switched away from the interview tab. This is your first warning. 
+              Changing tabs during an interview is not allowed and will result in termination of your interview on the second occurrence.
+            </p>
+            <Button 
+              className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+              onClick={() => setIsTabWarningModalOpen(false)}
+            >
+              I Understand
+            </Button>
+          </div>
+        </div>
+      )}
+      
       {/* Stop Interview Confirmation Popup */}
       {isStopConfirmationOpen && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
@@ -1589,6 +1954,35 @@ export default function Component() {
                 }}
               >
                 Stop Interview
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Time Up Modal */}
+      {isTimeUpModalOpen && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70 z-[100]">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 border-4 border-purple-500">
+            <div className="flex items-center text-purple-800 mb-4">
+              <Clock className="h-10 w-10 mr-3 animate-pulse" />
+              <h3 className="text-2xl font-bold">Time's Up!</h3>
+            </div>
+            <div className="bg-purple-50 border-l-4 border-purple-500 p-4 mb-4">
+              <p className="text-purple-700 font-bold text-lg">Interview ended - Time limit reached</p>
+            </div>
+            <p className="text-gray-700 mb-6">
+              The 10-minute time limit for your interview has been reached. The interview has now ended.
+              We will process the answers you've provided so far to give you feedback.
+            </p>
+            <div className="flex justify-center">
+              <Button 
+                className="w-3/4 bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 text-lg"
+                onClick={() => {
+                  setIsTimeUpModalOpen(false);
+                }}
+              >
+                Continue to Results
               </Button>
             </div>
           </div>

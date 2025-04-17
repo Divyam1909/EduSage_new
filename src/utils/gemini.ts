@@ -52,12 +52,25 @@ export const generateInterviewQuestions = async (
   experience: string
 ): Promise<any[]> => {
   try {
-    const prompt = `Generate 5 interview questions for a ${experience} ${jobRole} position with focus on ${techStack}. 
-    Include a mix of technical, behavioral, and problem-solving questions.
+    const prompt = `Generate 5 focused interview questions for a ${experience} ${jobRole} position that specifically tests knowledge of ${techStack}.
+    
+    Tailor the difficulty and depth based on the experience level:
+    - Entry-level: Focus on fundamentals and basic implementation
+    - Mid-level: Include system design and intermediate concepts
+    - Senior: Cover architecture decisions, tradeoffs, and advanced topics
+    
+    Each question should be specific, challenging, and similar to what would be asked in real tech interviews.
+    
     Format your response as a JSON array of objects, where each object has:
     - id: a number
-    - question: the full question text
+    - question: the full question text (make this detailed and specific)
     - type: the question type (technical, behavioral, problem-solving, career)
+    
+    Include at least:
+    - 2 technical questions about ${techStack}
+    - 1 problem-solving scenario relevant to ${jobRole}
+    - 1 behavioral question appropriate for ${experience} level
+    - 1 question about career progression or role-specific expectations
     
     Only respond with the JSON, no additional text.`;
 
