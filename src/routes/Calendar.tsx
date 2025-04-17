@@ -496,10 +496,12 @@ export default function CalendarComponent() {
           {Array.from({ length: daysInMonth }).map((_, i) => {
             const date = new Date(selectedYear, selectedMonth, i + 1);
             const dayEvents = getEventsForDate(date);
+            const isToday = date.toDateString() === new Date().toDateString();
+            
             return (
               <div
                 key={i}
-                className="flex flex-col items-center h-16 border border-purple-200 rounded-lg cursor-pointer hover:bg-purple-50"
+                className={`flex flex-col h-20 border ${isToday ? 'border-purple-600 bg-purple-50' : 'border-purple-200'} rounded-lg cursor-pointer hover:bg-purple-100 overflow-hidden relative transition-colors duration-200`}
                 onClick={() => {
                   if (dayEvents.length > 0) {
                     // If an event exists on this day, open the event details modal.
@@ -531,15 +533,35 @@ export default function CalendarComponent() {
                   }
                 }}
               >
-                <span className="mb-1">{i + 1}</span>
-                {dayEvents.map((event) => (
-                  <div
-                    key={event.id}
-                    className="text-xs p-1 bg-purple-600 text-white rounded"
-                  >
-                    {event.title}
-                  </div>
-                ))}
+                <div className={`flex justify-between items-center px-2 py-1 ${isToday ? 'bg-purple-600 text-white' : ''}`}>
+                  <span className={`font-semibold ${isToday ? 'text-white' : 'text-gray-700'}`}>{i + 1}</span>
+                  {dayEvents.length > 1 && (
+                    <span className="text-xs font-medium px-1.5 py-0.5 bg-purple-700 text-white rounded-full">
+                      {dayEvents.length}
+                    </span>
+                  )}
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-1 space-y-1">
+                  {dayEvents.length > 0 && (
+                    <>
+                      {dayEvents.slice(0, 2).map((event, idx) => (
+                        <div 
+                          key={event.id} 
+                          className="text-xs p-1 bg-purple-600 text-white rounded overflow-hidden overflow-ellipsis whitespace-nowrap"
+                          title={event.title}
+                        >
+                          {event.title}
+                        </div>
+                      ))}
+                      {dayEvents.length > 2 && (
+                        <div className="text-xs text-purple-700 font-medium pl-1">
+                          +{dayEvents.length - 2} more...
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -669,8 +691,8 @@ export default function CalendarComponent() {
 
       {/* Event Details Modal */}
       {isModalOpen && selectedEvent && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white border border-purple-300 p-6 rounded-lg shadow-xl w-96">
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+          <div className="bg-white border border-purple-300 p-6 rounded-lg shadow-xl w-96 max-h-[90vh] overflow-auto">
             <h2 className="text-2xl font-bold mb-4 text-purple-800">
               {selectedEvent.title}
             </h2>
@@ -683,7 +705,6 @@ export default function CalendarComponent() {
                     hour12: true,
                     hour: "numeric",
                     minute: "numeric",
-                    second: "numeric",
                     year: "numeric",
                     month: "long",
                     day: "numeric",
@@ -693,10 +714,46 @@ export default function CalendarComponent() {
                 }
               })()}
             </p>
-            <p className="mb-4">{selectedEvent.details}</p>
+            <div className="mb-4 overflow-auto max-h-48 whitespace-pre-line bg-purple-50 p-3 rounded-md text-gray-800">
+              {selectedEvent.details}
+            </div>
             <p className="mb-4 text-sm text-gray-600">
               {getTimeLeft(new Date(selectedEvent.date))}
             </p>
+            
+            {/* Show other events on the same day */}
+            {(() => {
+              const date = new Date(selectedEvent.date);
+              const dayEvents = getEventsForDate(date).filter(event => event.id !== selectedEvent.id);
+              
+              if (dayEvents.length > 0) {
+                return (
+                  <div className="mb-4">
+                    <h3 className="font-semibold text-purple-800 mb-2">
+                      Other events on this day ({dayEvents.length}):
+                    </h3>
+                    <ul className="text-sm bg-purple-50 rounded-md p-2">
+                      {dayEvents.map((event) => (
+                        <li 
+                          key={event.id} 
+                          className="mb-2 p-2 hover:bg-purple-100 rounded cursor-pointer transition-colors duration-150"
+                          onClick={() => setSelectedEvent(event)}
+                        >
+                          <div className="font-medium text-purple-800">{event.title}</div>
+                          {event.time && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              Time: {event.time}
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+            
             <div className="flex space-x-2">
               <Button
                 onClick={() => {

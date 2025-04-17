@@ -18,7 +18,16 @@ const SubjectMark = require('./models/SubjectMark');
 const Quiz = require("./models/Quiz.js");
 const QuizAttempt = require("./models/QuizAttempt.js");
 
+// Import routes
+const calendarRoutes = require('./routes/calendarRoutes');
+
 const app = express();
+
+// Define multer upload handler for file uploads
+const uploadHandler = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+});
 
 // Add compression middleware for all routes
 app.use(compression());
@@ -397,89 +406,6 @@ app.get("/api/notifications/pending", async (req, res) => {
   } catch (error) {
     console.error("Error fetching pending notifications:", error);
     res.status(500).json({ message: "Server error" });
-  }
-});
-
-/** ========== NEW ENDPOINT: Upload Academic Calendar PDF ========== **/
-const uploadHandler = multer();
-const { extractEventsFromPDF } = require("./pdfParser");
-
-app.post("/api/calendar/upload", uploadHandler.single("pdf"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ message: "No file uploaded" });
-    }
-    
-    console.log("PDF file received, size:", req.file.size, "bytes");
-    
-    // Simple check to ensure it's likely a PDF
-    if (req.file.mimetype !== 'application/pdf') {
-      console.log("Warning: File mimetype is not PDF:", req.file.mimetype);
-    }
-    
-    // Validate buffer is not empty
-    if (!req.file.buffer || req.file.buffer.length === 0) {
-      return res.status(400).json({ message: "Uploaded file buffer is empty" });
-    }
-    
-    console.log("Extracting events from PDF...");
-    const events = await extractEventsFromPDF(req.file.buffer);
-    
-    if (!events || events.length === 0) {
-      console.log("No events were extracted from the PDF");
-      return res.status(400).json({ message: "No events found in the uploaded file. The PDF format may not be supported." });
-    }
-    
-    console.log(`Extracted ${events.length} events, saving to database...`);
-    
-    // Add notification settings to each event from PDF
-    const eventsWithNotifications = events.map(event => ({
-      ...event,
-      importedFromPdf: true,
-      notifications: {
-        dayBefore: true,
-        dayOf: true,
-        atTime: event.time ? true : false
-      },
-      notificationStatus: {
-        dayBeforeSent: false,
-        dayOfSent: false,
-        atTimeSent: false
-      }
-    }));
-    
-    await Event.insertMany(eventsWithNotifications);
-    console.log(`Successfully saved ${events.length} events from PDF`);
-    
-    res.status(200).json({ 
-      message: `${events.length} events uploaded successfully`, 
-      events,
-      count: events.length
-    });
-  } catch (error) {
-    console.error("Error processing PDF:", error);
-    // Send detailed error message to help debugging
-    res.status(500).json({ 
-      message: "Error processing PDF", 
-      error: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
-  }
-});
-
-/** ========== NEW ENDPOINT: Delete All PDF-Imported Events ========== **/
-app.delete("/api/calendar/pdf-events", async (req, res) => {
-  try {
-    console.log("Deleting all events imported from PDFs...");
-    const result = await Event.deleteMany({ importedFromPdf: true });
-    console.log(`Deleted ${result.deletedCount} PDF-imported events`);
-    res.status(200).json({ 
-      message: `${result.deletedCount} PDF-imported events deleted successfully`,
-      deletedCount: result.deletedCount
-    });
-  } catch (error) {
-    console.error("Error deleting PDF events:", error);
-    res.status(500).json({ message: "Server error deleting PDF events" });
   }
 });
 
@@ -1356,6 +1282,9 @@ async function updateQuestionsAskedForAllUsers() {
     console.error("Error updating questionsAsked field:", error);
   }
 }
+
+// Add API routes
+app.use('/api/calendar', calendarRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
