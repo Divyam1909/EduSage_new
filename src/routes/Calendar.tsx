@@ -25,6 +25,9 @@ import { BookOpen } from "lucide-react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 import { Checkbox } from "@/components/ui/checkbox";
+import AILoader from "@/components/AILoader";
+import { useToast } from "@/components/ToastContainer";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 interface Event {
   id?: string;
@@ -69,9 +72,20 @@ export default function CalendarComponent() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{
+    status: 'idle' | 'uploading' | 'parsing' | 'saving' | 'complete' | 'error';
+    message?: string;
+  }>({ status: 'idle' });
   
   // New state for PDF events deletion
   const [deletingPdfEvents, setDeletingPdfEvents] = useState(false);
+
+  // Add the toast hook
+  const { showToast } = useToast();
+
+  // Add state for confirm dialogs
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
 
   const getTimeLeft = (eventDate: Date) => {
     const now = new Date();
@@ -98,12 +112,15 @@ export default function CalendarComponent() {
         }));
         setEvents(transformed);
       })
-      .catch((error) => console.error("Error fetching events:", error));
+      .catch((error) => {
+        console.error("Error fetching events:", error);
+        showToast("Failed to load calendar events", "error");
+      });
   };
 
   const handleAddEvent = async () => {
     if (!newEvent.title || !newEvent.date) {
-      alert("Title and Date are required!");
+      showToast("Title and Date are required!", "error");
       return;
     }
     try {
@@ -143,14 +160,16 @@ export default function CalendarComponent() {
         }
       });
       setIsEditMode(false);
+      showToast("Event added successfully", "success");
     } catch (error) {
       console.error("Error adding event:", error);
+      showToast("Failed to add event", "error");
     }
   };
 
   const handleUpdateEvent = async () => {
     if (!newEvent.title || !newEvent.date || !selectedEvent) {
-      alert("Title and Date are required!");
+      showToast("Title and Date are required!", "error");
       return;
     }
     try {
@@ -193,13 +212,16 @@ export default function CalendarComponent() {
       });
       setSelectedEvent(null);
       setIsEditMode(false);
+      showToast("Event updated successfully", "success");
     } catch (error) {
       console.error("Error updating event:", error);
+      showToast("Failed to update event", "error");
     }
   };
 
   const handleDeleteEvent = async () => {
     if (!selectedEvent) return;
+    
     try {
       await axios.delete(
         `http://localhost:5000/api/events/${selectedEvent.id}`
@@ -209,58 +231,91 @@ export default function CalendarComponent() {
       );
       setIsModalOpen(false);
       setSelectedEvent(null);
+      showToast("Event deleted successfully", "success");
     } catch (error) {
       console.error("Error deleting event:", error);
+      showToast("Failed to delete event", "error");
     }
+  };
+
+  // Function to trigger delete confirmation
+  const confirmDeleteEvent = () => {
+    setDeleteConfirmOpen(true);
   };
 
   // PDF Upload Handlers
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setSelectedFile(e.target.files[0]);
+      // Reset any previous error messages when a new file is selected
+      setUploadProgress({ status: 'idle' });
     }
   };
 
-  // Function to delete all PDF-imported events
-  const handleDeletePdfEvents = async () => {
-    if (!confirm('Are you sure you want to delete all PDF-imported events? This action cannot be undone.')) {
-      return;
-    }
-    
+  // Update handleDeletePdfEvents to use the confirmation dialog
+  const handleDeletePdfEvents = async () => {    
     setDeletingPdfEvents(true);
     try {
       const response = await axios.delete('http://localhost:5000/api/calendar/pdf-events');
-      alert(response.data.message);
+      
+      // Check for count first, then deletedCount, then fall back to a generic message
+      if (response.data.count !== undefined) {
+        showToast(`${response.data.count} PDF-imported events deleted`, "success");
+      } else if (response.data.deletedCount !== undefined) {
+        showToast(`${response.data.deletedCount} PDF-imported events deleted`, "success");
+      } else {
+        showToast("PDF-imported events deleted successfully", "success");
+      }
+      
       // Refresh events after deletion
       refreshEvents();
     } catch (error) {
       console.error('Error deleting PDF events:', error);
-      alert('Failed to delete PDF events');
+      showToast("Failed to delete PDF events", "error");
     } finally {
       setDeletingPdfEvents(false);
     }
   };
 
-  // Update the handleUploadPDF function with better error handling
+  // Function to trigger bulk delete confirmation
+  const confirmDeletePdfEvents = () => {
+    setBulkDeleteConfirmOpen(true);
+  };
+
+  // Update the handleUploadPDF function with better UI feedback
   const handleUploadPDF = async () => {
     if (!selectedFile) return;
     setUploading(true);
+    setUploadProgress({ status: 'uploading', message: 'Uploading file...' });
+    
     const formData = new FormData();
     formData.append("pdf", selectedFile);
+    
     try {
-      // Let axios automatically set the Content-Type (do not set it explicitly)
+      // Update UI to show we're starting AI processing after upload begins
+      setTimeout(() => {
+        setUploadProgress({ status: 'parsing', message: 'AI is analyzing your calendar...' });
+      }, 1000);
+      
+      // Let axios automatically set the Content-Type
       const response = await axios.post(
         "http://localhost:5000/api/calendar/upload",
         formData
       );
+      
+      setUploadProgress({ status: 'complete' });
       const eventCount = response.data.events?.length || 0;
-      alert(`Success! ${eventCount} events were imported from the PDF.`);
+      showToast(`Successfully imported ${eventCount} events from the PDF`, "success");
       setShowUploadModal(false);
       setSelectedFile(null);
       refreshEvents();
     } catch (error) {
       console.error("Error uploading PDF:", error);
-      alert(`Error uploading PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setUploadProgress({ 
+        status: 'error', 
+        message: `Error uploading PDF: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+      showToast(`Error uploading PDF: ${error instanceof Error ? error.message : 'Unknown error'}`, "error");
     } finally {
       setUploading(false);
     }
@@ -434,7 +489,7 @@ export default function CalendarComponent() {
           </Button>
           <Button
             variant="outline"
-            onClick={handleDeletePdfEvents}
+            onClick={confirmDeletePdfEvents}
             disabled={deletingPdfEvents}
             className="flex items-center space-x-2"
           >
@@ -780,7 +835,7 @@ export default function CalendarComponent() {
               >
                 Edit
               </Button>
-              <Button onClick={handleDeleteEvent} variant="destructive">
+              <Button onClick={confirmDeleteEvent} variant="destructive">
                 Delete
               </Button>
             </div>
@@ -796,33 +851,111 @@ export default function CalendarComponent() {
 
       {/* PDF Upload Modal */}
       {showUploadModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white border border-purple-300 p-6 rounded-lg shadow-xl w-96">
-            <h2 className="text-2xl font-bold mb-4 text-purple-800">
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+          <div className="bg-white border border-purple-300 p-6 rounded-lg shadow-xl w-[450px] max-w-[90vw]">
+            <h2 className="text-2xl font-bold mb-4 text-purple-800 text-center">
               Upload Academic Calendar PDF
             </h2>
-            <Input
-              type="file"
-              accept="application/pdf"
-              onChange={handleFileChange}
-              className="mb-4"
-            />
-            <Button
-              onClick={handleUploadPDF}
-              disabled={uploading}
-              className="w-full"
-            >
-              {uploading ? "Uploading..." : "Upload"}
-            </Button>
-            <Button
-              onClick={() => setShowUploadModal(false)}
-              className="w-full mt-2"
-            >
-              Cancel
-            </Button>
+            
+            {uploading ? (
+              <div className="py-6 px-4">
+                <AILoader />
+                <div className="text-center text-sm text-purple-700 mt-4">
+                  {uploadProgress.status === 'uploading' ? 
+                    'Uploading your file to the server...' : 
+                    'Our AI is working to extract events from your calendar...'}
+                </div>
+                <div className="text-center text-xs text-gray-500 mt-2">
+                  This may take up to a minute depending on the complexity of your calendar
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="mb-6 text-sm text-center text-gray-600">
+                  Upload your academic calendar PDF to automatically extract events using AI.
+                  <br />
+                  The system will identify dates, titles, and details from your calendar.
+                </div>
+                
+                <div className="flex flex-col items-center mb-6">
+                  <Input
+                    type="file"
+                    accept="application/pdf"
+                    onChange={handleFileChange}
+                    className="mb-4 w-full"
+                    disabled={uploading}
+                  />
+                  {selectedFile && (
+                    <div className="text-sm text-green-600 font-medium">
+                      Ready to upload: {selectedFile.name}
+                    </div>
+                  )}
+                </div>
+                
+                {uploadProgress.status === 'error' && (
+                  <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm">
+                    <div className="font-medium mb-1">Error occurred:</div>
+                    {uploadProgress.message}
+                  </div>
+                )}
+              </>
+            )}
+            
+            <div className="flex space-x-2">
+              <Button
+                onClick={handleUploadPDF}
+                disabled={uploading || !selectedFile}
+                className={`flex-1 ${!uploading ? 'bg-purple-700 hover:bg-purple-800' : ''}`}
+              >
+                {uploading ? 
+                  (uploadProgress.status === 'uploading' ? "Uploading..." : "AI Processing...") 
+                  : "Upload and Process"}
+              </Button>
+              <Button
+                onClick={() => {
+                  if (!uploading) {
+                    setShowUploadModal(false);
+                    setSelectedFile(null);
+                    setUploadProgress({ status: 'idle' });
+                  }
+                }}
+                disabled={uploading}
+                variant="outline"
+                className="flex-1"
+              >
+                {uploading ? "Please Wait..." : "Cancel"}
+              </Button>
+            </div>
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Dialogs */}
+      <ConfirmDialog
+        isOpen={deleteConfirmOpen}
+        title="Delete Event"
+        description="Are you sure you want to delete this event? This action cannot be undone."
+        onConfirm={() => {
+          setDeleteConfirmOpen(false);
+          handleDeleteEvent();
+        }}
+        onCancel={() => setDeleteConfirmOpen(false)}
+        confirmText="Delete"
+        confirmVariant="destructive"
+      />
+      
+      <ConfirmDialog
+        isOpen={bulkDeleteConfirmOpen}
+        title="Delete All PDF Events"
+        description="Are you sure you want to delete all events imported from PDFs? This action cannot be undone."
+        onConfirm={() => {
+          setBulkDeleteConfirmOpen(false);
+          handleDeletePdfEvents();
+        }}
+        onCancel={() => setBulkDeleteConfirmOpen(false)}
+        confirmText="Delete All"
+        confirmVariant="destructive"
+      />
     </div>
   );
 }
