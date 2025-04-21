@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Users,
   FileText,
@@ -52,6 +52,12 @@ interface Attempt {
   clearable: boolean; // indicates if this attempt can be cleared
 }
 
+interface QuizResult {
+  totalScore: number;
+  timeTaken: number;
+  tabViolation?: boolean;
+}
+
 export default function QuizInterface() {
   // User state and token retrieval
   const [userData, setUserData] = useState<any>(null);
@@ -62,7 +68,6 @@ export default function QuizInterface() {
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
   const [attemptingQuiz, setAttemptingQuiz] = useState<boolean>(false);
   const [userAnswers, setUserAnswers] = useState<string[]>([]);
-  const [quizResult, setQuizResult] = useState<{ totalScore: number; timeTaken: number } | null>(null);
   const [attemptDetails, setAttemptDetails] = useState<any[]>([]);
   const [startTime, setStartTime] = useState<number>(0);
   const [remainingTime, setRemainingTime] = useState<number>(0);
@@ -84,6 +89,18 @@ export default function QuizInterface() {
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [viewAttempts, setViewAttempts] = useState<boolean>(false);
 
+  // Tab Change End Modal
+  const [isTabEndModalOpen, setIsTabEndModalOpen] = useState(false);
+  const [tabChangeCount, setTabChangeCount] = useState(0);
+  const [isTabWarningModalOpen, setIsTabWarningModalOpen] = useState(false);
+
+  // Update type definition for quiz result to include tabViolation
+  const [quizResult, setQuizResult] = useState<QuizResult | null>(null);
+
+  // Timer state variables
+  const [isTimerRunning, setIsTimerRunning] = useState<boolean>(false);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  
   // Fetch user profile similar to Home.tsx so that we have the correct identifier
   useEffect(() => {
     if (token) {
@@ -103,12 +120,62 @@ export default function QuizInterface() {
     fetchQuizzes();
   }, []);
 
-  // Fetch attempts using the logged-in user's roll number (if available)
+  // Make sure fetchAttempts is called when component mounts after user data is loaded
   useEffect(() => {
     if (userData && userData.rollno) {
       fetchAttempts();
     }
   }, [userData]);
+
+  // Ensure attempts are refreshed when view attempts is toggled
+  useEffect(() => {
+    if (viewAttempts && userData && userData.rollno) {
+      fetchAttempts();
+    }
+  }, [viewAttempts]);
+
+  // When user navigates back from attempts view, refresh quiz list
+  useEffect(() => {
+    if (!viewAttempts) {
+      fetchQuizzes();
+    }
+  }, [viewAttempts]);
+
+  // Extra safety measure - refresh quizzes after attempts are fetched
+  useEffect(() => {
+    if (attempts.length > 0) {
+      // If we have loaded attempts, refresh available quizzes
+      fetchQuizzes();
+    }
+  }, [attempts.length]);
+
+  // Tab visibility detection
+  useEffect(() => {
+    // Only monitor tab changes when quiz is in progress
+    if (attemptingQuiz && isTimerRunning) {
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'hidden') {
+          // User switched tabs or minimized window
+          const newCount = tabChangeCount + 1;
+          setTabChangeCount(newCount);
+          
+          if (newCount === 1) {
+            // First warning
+            setIsTabWarningModalOpen(true);
+          } else if (newCount >= 2) {
+            // Second tab change - end quiz
+            console.log("Second tab change detected, ending quiz");
+            endQuizDueToTabChange();
+          }
+        }
+      };
+      
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+    }
+  }, [attemptingQuiz, isTimerRunning, tabChangeCount]);
 
   const fetchQuizzes = () => {
     fetch("http://localhost:5000/api/quizzes", {
@@ -135,11 +202,78 @@ export default function QuizInterface() {
       .catch((err) => console.error("Error fetching attempts:", err));
   };
 
+  // Function to end quiz due to tab change
+  const endQuizDueToTabChange = () => {
+    console.log("Ending quiz due to tab change");
+    
+    // Stop timer
+    setIsTimerRunning(false);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    
+    // Ensure the tab end modal is visible
+    setIsTabEndModalOpen(true);
+    
+    // Calculate time taken and submit the quiz attempt with a penalty
+    const timeTaken = Math.floor((Date.now() - startTime) / 1000);
+    
+    // Ensure all questions have some answer, even if blank
+    // This ensures text-type questions also get processed
+    const answersWithDefaults = selectedQuiz?.questions.map((_, index) => {
+      return {
+        questionId: index,
+        answer: userAnswers[index] || "", // Use empty string for unanswered questions
+      };
+    }) || [];
+  
+    if (userData && selectedQuiz) {
+      fetch(`http://localhost:5000/api/quizzes/${selectedQuiz._id}/attempt`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ 
+          user: userData.rollno, 
+          answers: answersWithDefaults, 
+          timeTaken,
+          tabViolation: true // Flag to indicate tab violation
+        }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          // Set result with automatic failure or penalty
+          setQuizResult({ 
+            totalScore: data.totalScore, 
+            timeTaken,
+            tabViolation: true
+          });
+          setAttemptDetails(data.attempt.answers);
+          setAttemptingQuiz(false);
+          
+          // Update attempts list to show the new attempt
+          fetchAttempts();
+        })
+        .catch((err) => {
+          console.error("Error submitting quiz attempt:", err);
+          // Even if the submission fails, we should still end the quiz
+          setAttemptingQuiz(false);
+          setIsTabEndModalOpen(true);
+        });
+    } else {
+      // If we don't have user data or selected quiz, just terminate the quiz UI
+      setAttemptingQuiz(false);
+      setSelectedQuiz(null);
+    }
+  };
+
   // Timer effect: when attemptingQuiz becomes true, start countdown
   useEffect(() => {
     let timer: any;
     if (attemptingQuiz && selectedQuiz) {
       setRemainingTime(selectedQuiz.timeLimit * 60);
+      setIsTimerRunning(true);
       timer = setInterval(() => {
         setRemainingTime((prev) => {
           if (prev <= 1) {
@@ -150,8 +284,12 @@ export default function QuizInterface() {
           return prev - 1;
         });
       }, 1000);
+      timerRef.current = timer;
     }
-    return () => clearInterval(timer);
+    return () => {
+      if (timer) clearInterval(timer);
+      setIsTimerRunning(false);
+    };
   }, [attemptingQuiz, selectedQuiz]);
 
   const getDifficultyColor = (difficulty: string | undefined) => {
@@ -177,7 +315,7 @@ export default function QuizInterface() {
       return attemptedQuizId.toString() === quiz._id?.toString();
     });
     if (attempted) {
-      alert("You have already attempted this quiz.");
+      alert("You have already attempted this quiz. Clear your attempt first if you want to try again.");
       return;
     }
     setSelectedQuiz(quiz);
@@ -190,6 +328,9 @@ export default function QuizInterface() {
     if (!selectedQuiz) return;
     setAttemptingQuiz(true);
     setStartTime(Date.now());
+    setTabChangeCount(0); // Reset tab change count
+    setIsTabEndModalOpen(false);
+    setIsTabWarningModalOpen(false);
   };
 
   const handleAnswerChange = (index: number, answer: string) => {
@@ -200,10 +341,20 @@ export default function QuizInterface() {
 
   const submitQuizAttempt = () => {
     if (!selectedQuiz || !userData) return;
+    
+    // Stop timer
+    setIsTimerRunning(false);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    
     const timeTaken = Math.floor((Date.now() - startTime) / 1000);
-    const answersPayload = userAnswers.map((answer, index) => ({
+    
+    // Ensure all questions have some answer, even if blank
+    const answersWithDefaults = selectedQuiz.questions.map((_, index) => ({
       questionId: index,
-      answer: answer.trim(),
+      answer: userAnswers[index] || "", // Use empty string for unanswered questions
     }));
   
     fetch(`http://localhost:5000/api/quizzes/${selectedQuiz._id}/attempt`, {
@@ -212,8 +363,7 @@ export default function QuizInterface() {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`
       },
-      // Use the logged-in user's roll number here
-      body: JSON.stringify({ user: userData.rollno, answers: answersPayload, timeTaken }),
+      body: JSON.stringify({ user: userData.rollno, answers: answersWithDefaults, timeTaken }),
     })
       .then((res) => res.json())
       .then((data) => {
@@ -222,7 +372,11 @@ export default function QuizInterface() {
         setAttemptingQuiz(false);
         fetchAttempts();
       })
-      .catch((err) => console.error("Error submitting quiz attempt:", err));
+      .catch((err) => {
+        console.error("Error submitting quiz attempt:", err);
+        // Even if submission fails, exit the quiz
+        setAttemptingQuiz(false);
+      });
   };
 
   const handleNewQuizDetailChange = (field: keyof Omit<Quiz, "questions" | "_id">, value: any) => {
@@ -316,6 +470,8 @@ export default function QuizInterface() {
         .then((res) => res.json())
         .then(() => {
           fetchAttempts();
+          // Also refresh quizzes to update the UI
+          fetchQuizzes();
         })
         .catch((err) => console.error("Error clearing attempt:", err));
     }
@@ -354,7 +510,7 @@ export default function QuizInterface() {
           return (
             <div
               key={quiz._id}
-              className="bg-white border-2 border-purple-200 p-4 rounded hover:shadow-lg transition-shadow duration-300"
+              className={`bg-white border-2 ${attempted ? 'border-gray-300' : 'border-purple-200'} p-4 rounded hover:shadow-lg transition-shadow duration-300`}
             >
               <h3 className="text-purple-800 text-xl mb-1">{quiz.title}</h3>
               <p className="text-sm text-gray-600 mb-2">Topic: {quiz.topic}</p>
@@ -369,9 +525,15 @@ export default function QuizInterface() {
                 <Clock className="h-5 w-5 text-purple-400 mr-1" />
                 <span className="text-purple-700">{quiz.timeLimit} minutes incantation</span>
               </div>
+              {attempted && (
+                <div className="mt-2 bg-yellow-100 p-2 rounded text-sm">
+                  <p className="font-medium text-yellow-800">Already attempted</p>
+                  <p className="text-yellow-700">Score: {attempted.totalScore}</p>
+                </div>
+              )}
               <div className="mt-4 flex justify-between">
                 <Button
-                  className="bg-purple-600 text-white hover:bg-purple-700 flex-1 mr-2"
+                  className={`${attempted ? 'bg-gray-500' : 'bg-purple-600'} text-white hover:bg-purple-700 flex-1 mr-2`}
                   onClick={() => handleSelectQuiz(quiz)}
                   disabled={!!attempted}
                 >
@@ -414,7 +576,7 @@ export default function QuizInterface() {
         <strong>Time Limit:</strong> {selectedQuiz?.timeLimit} minutes
       </p>
       <div className="flex space-x-4">
-        <Button variant="ghost" onClick={() => setSelectedQuiz(null)}>
+        <Button variant="ghost" onClick={backToQuizList}>
           Back
         </Button>
         <Button
@@ -503,6 +665,12 @@ export default function QuizInterface() {
   const renderQuizResult = () => (
     <div className="bg-purple-50 p-8 min-h-screen">
       <h2 className="text-3xl font-bold text-purple-800 mb-4">Quiz Completed</h2>
+      {quizResult && (quizResult as any).tabViolation && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          <p className="font-bold">Tab Change Violation Detected</p>
+          <p>Your quiz was automatically submitted due to changing tabs more than once.</p>
+        </div>
+      )}
       <p className="text-purple-700 mb-2">
         <strong>Total Score:</strong> {quizResult?.totalScore}
       </p>
@@ -512,17 +680,24 @@ export default function QuizInterface() {
       <div className="space-y-4">
         {selectedQuiz?.questions.map((q, index) => {
           const userAns = userAnswers[index];
-          const isCorrect = attemptDetails.find((a) => a.questionId === index)?.correct;
+          const questionAttemptDetails = attemptDetails.find((a) => a.questionId === index);
+          const isCorrect = questionAttemptDetails?.correct;
+          const isUnanswered = !userAns || userAns.trim() === '';
+          
           return (
             <div key={index} className="flex items-center">
               <div className="w-10">
                 {isCorrect ? <Check className="text-green-500" /> : <X className="text-red-500" />}
               </div>
-              <div>
+              <div className="flex-1">
                 <p className="font-semibold">
                   {index + 1}. {q.questionText}
                 </p>
-                <p>Your Answer: {userAns}</p>
+                {isUnanswered ? (
+                  <p className="text-red-500 italic">Not answered</p>
+                ) : (
+                  <p>Your Answer: {userAns}</p>
+                )}
                 <p>Correct Answer: {q.correctAnswer}</p>
                 <p>
                   Marks: {isCorrect ? q.marks : 0} / {q.marks}
@@ -532,15 +707,22 @@ export default function QuizInterface() {
           );
         })}
       </div>
-      <div className="mt-6">
+      <div className="mt-6 flex space-x-4">
         <Button
           className="bg-purple-600 text-white hover:bg-purple-700"
+          onClick={backToQuizList}
+        >
+          Back to Quizzes
+        </Button>
+        <Button
+          className="bg-blue-600 text-white hover:bg-blue-700"
           onClick={() => {
+            setViewAttempts(true);
             setQuizResult(null);
             setSelectedQuiz(null);
           }}
         >
-          Close
+          View All Attempts
         </Button>
       </div>
     </div>
@@ -716,11 +898,18 @@ export default function QuizInterface() {
             className="text-red-500 border-red-500 hover:bg-red-500 hover:text-white"
             onClick={() => {
               if (window.confirm("Are you sure you want to clear all attempts?")) {
-                fetch(`http://localhost:5000/api/quizAttempts/clearAll?user=${userData.rollno}`, { method: "DELETE" })
+                fetch(`http://localhost:5000/api/quizAttempts/clearAll?user=${userData.rollno}`, { 
+                  method: "DELETE",
+                  headers: {
+                    Authorization: `Bearer ${token}`
+                  }
+                })
                   .then((res) => res.json())
                   .then(() => {
                     alert("All clearable attempts cleared successfully!");
                     fetchAttempts();
+                    // Also refresh quizzes to update the UI
+                    fetchQuizzes();
                   })
                   .catch((err) => console.error("Error clearing all attempts:", err));
               }
@@ -779,6 +968,77 @@ export default function QuizInterface() {
       )}
     </div>
   );
+
+  // Add rendering for the warning modal
+  const renderTabWarningModal = () => (
+    isTabWarningModalOpen && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
+          <h3 className="text-xl font-bold text-red-600 mb-4">⚠️ Warning: Tab Change Detected</h3>
+          <p className="mb-4">
+            You have changed tabs or minimized the window. This is your first warning.
+          </p>
+          <p className="mb-4 font-bold">
+            If you change tabs again, your quiz attempt will be automatically submitted.
+          </p>
+          <Button
+            className="bg-purple-600 text-white hover:bg-purple-700 w-full"
+            onClick={() => setIsTabWarningModalOpen(false)}
+          >
+            I Understand
+          </Button>
+        </div>
+      </div>
+    )
+  );
+
+  // Add rendering for the tab end modal with ability to view attempts
+  const renderTabEndModal = () => (
+    isTabEndModalOpen && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
+          <h3 className="text-xl font-bold text-red-600 mb-4">Quiz Terminated</h3>
+          <p className="mb-4">
+            Your quiz has been automatically submitted due to multiple tab changes.
+          </p>
+          <p className="mb-4 font-bold">
+            Changing tabs during a quiz is not allowed to maintain academic integrity.
+          </p>
+          <div className="flex space-x-3">
+            <Button
+              className="bg-purple-600 text-white hover:bg-purple-700 flex-1"
+              onClick={() => {
+                setIsTabEndModalOpen(false);
+                backToQuizList();
+              }}
+            >
+              Close
+            </Button>
+            <Button 
+              className="bg-blue-600 text-white hover:bg-blue-700 flex-1"
+              onClick={() => {
+                setIsTabEndModalOpen(false);
+                setViewAttempts(true);
+                setSelectedQuiz(null);
+                setQuizResult(null);
+              }}
+            >
+              View Attempts
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  );
+
+  // Update the function for going back to quiz list to ensure quiz availability is refreshed
+  const backToQuizList = () => {
+    setSelectedQuiz(null);
+    setAttemptingQuiz(false);
+    setQuizResult(null);
+    fetchQuizzes();
+    fetchAttempts();
+  };
 
   return (
     <div className="flex min-h-screen bg-purple-50">
@@ -856,6 +1116,8 @@ export default function QuizInterface() {
             : renderQuizList()}
         </main>
       </div>
+      {renderTabWarningModal()}
+      {renderTabEndModal()}
     </div>
   );
 }

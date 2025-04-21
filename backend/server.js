@@ -875,21 +875,48 @@ app.delete("/api/quizzes/:id", async (req, res) => {
 app.post("/api/quizzes/:id/attempt", async (req, res) => {
   try {
     console.log("Received quiz attempt submission for quiz ID:", req.params.id);
-    const { user, answers, timeTaken } = req.body;
+    const { user, answers, timeTaken, tabViolation } = req.body;
     const quiz = await Quiz.findById(req.params.id).lean().exec();
     if (!quiz) {
       console.error("Quiz not found for ID:", req.params.id);
       return res.status(404).json({ message: "Quiz not found" });
     }
     let totalScore = 0;
+    
+    // Check if we should apply a penalty for tab violations
+    const applyPenalty = tabViolation === true;
+    
     const processedAnswers = quiz.questions.map((q, index) => {
       const userAnswerObj = answers.find((ans) => ans.questionId === index);
-      const userAnswer = userAnswerObj ? userAnswerObj.answer : "";
-      const isCorrect = userAnswer.trim().toLowerCase() === q.correctAnswer.trim().toLowerCase();
+      // Ensure we have a string, even if empty
+      const userAnswer = userAnswerObj && userAnswerObj.answer !== null && userAnswerObj.answer !== undefined
+        ? String(userAnswerObj.answer) // Convert to string to be safe
+        : "";
+      
+      // If there's a tab violation, automatically mark as incorrect
+      let isCorrect = false;
+      if (!applyPenalty) {
+        isCorrect = userAnswer.trim().toLowerCase() === q.correctAnswer.trim().toLowerCase();
+      }
+      
       const marksObtained = isCorrect ? (q.marks || 0) : 0;
       totalScore += marksObtained;
-      return { questionId: index, answer: userAnswer, correct: isCorrect, marksObtained };
+      
+      return { 
+        questionId: index, 
+        answer: userAnswer, 
+        correct: isCorrect, 
+        marksObtained 
+      };
     });
+    
+    // Ensure the total score doesn't exceed the quiz's total points value
+    // This prevents scoring issues where marks might add up to more than the quiz's intended points
+    if (totalScore > quiz.points) {
+      console.log(`Score adjustment: ${totalScore} capped to ${quiz.points} points for quiz ${quiz.title}`);
+      totalScore = quiz.points;
+    }
+    
     const newAttempt = new QuizAttempt({
       quizId: quiz._id,
       user,
@@ -898,6 +925,7 @@ app.post("/api/quizzes/:id/attempt", async (req, res) => {
       timeTaken,
       clearable: quiz.clearable,
     });
+    
     await newAttempt.save();
     console.log("Quiz attempt saved with total score:", totalScore);
     

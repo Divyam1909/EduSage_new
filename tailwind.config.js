@@ -66,6 +66,6 @@ export default {
     plugins: [require("tailwindcss-animate")],
     // Disable JIT inspector in production for better performance
     experimental: {
-        optimizeUniversalDefaults: true
+        
     }
 };
