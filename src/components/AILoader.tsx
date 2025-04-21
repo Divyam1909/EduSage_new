@@ -47,7 +47,7 @@ const StyledWrapper = styled.div`
     position: absolute;
     inset: 20px;
     background: transparent;
-    border: 1px dashed #8b5cf6;
+    border: 0.5px dashed #8b5cf6;
     border-radius: 50%;
     box-shadow: inset -5px -5px 25px rgba(107,33,168,0.15),
     inset 5px 5px 35px rgba(107,33,168,0.15);
@@ -59,7 +59,7 @@ const StyledWrapper = styled.div`
     width: 50px;
     height: 50px;
     border-radius: 50%;
-    border: 1px dashed #8b5cf6;
+    border: 0.5px dashed #8b5cf6;
     box-shadow: inset -5px -5px 25px rgba(107,33,168,0.15),
     inset 5px 5px 35px rgba(107,33,168,0.15);
   }
@@ -73,7 +73,7 @@ const StyledWrapper = styled.div`
     background: transparent;
     transform-origin: top left;
     animation: radar81 2s linear infinite;
-    border-top: 3px dashed #8b5cf6;
+    border-top: 1px dashed #8b5cf6;
   }
 
   .loader span::before {

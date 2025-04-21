@@ -11,6 +11,9 @@ import {
   Star,
   Check,
   X,
+  AlertTriangle,
+  Trash2,
+  CheckCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
@@ -72,6 +75,13 @@ export default function QuizInterface() {
   const [startTime, setStartTime] = useState<number>(0);
   const [remainingTime, setRemainingTime] = useState<number>(0);
 
+  // Toast notification state
+  const [toast, setToast] = useState<{visible: boolean, message: string, type: 'success' | 'error' | 'warning'}>({
+    visible: false,
+    message: '',
+    type: 'success'
+  });
+
   // Quiz creation states
   const [createQuizMode, setCreateQuizMode] = useState<boolean>(false);
   const [createQuizStep, setCreateQuizStep] = useState<number>(1);
@@ -84,6 +94,18 @@ export default function QuizInterface() {
     clearable: true, // default is clearable
     questions: [],
   });
+
+  // Confirmation modal states
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState<boolean>(false);
+  const [confirmAction, setConfirmAction] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({ title: '', message: '', onConfirm: () => {} });
+
+  // Points validation modal state
+  const [isPointsModalOpen, setIsPointsModalOpen] = useState<boolean>(false);
+  const [pointsValidationData, setPointsValidationData] = useState<{quizPoints: number, questionMarks: number}>({quizPoints: 0, questionMarks: 0});
 
   // Attempts view states
   const [attempts, setAttempts] = useState<Attempt[]>([]);
@@ -306,6 +328,21 @@ export default function QuizInterface() {
     }
   };
 
+  // Show toast notification function
+  const showToast = (message: string, type: 'success' | 'error' | 'warning' = 'success') => {
+    setToast({ visible: true, message, type });
+    // Auto-hide toast after 3 seconds
+    setTimeout(() => {
+      setToast(prev => ({ ...prev, visible: false }));
+    }, 3000);
+  };
+
+  // Show confirmation modal function
+  const showConfirmModal = (title: string, message: string, onConfirm: () => void) => {
+    setConfirmAction({ title, message, onConfirm });
+    setIsConfirmModalOpen(true);
+  };
+
   // When a quiz is selected from the list
   const handleSelectQuiz = (quiz: Quiz) => {
     // Prevent reattempt if already attempted by this user
@@ -315,7 +352,7 @@ export default function QuizInterface() {
       return attemptedQuizId.toString() === quiz._id?.toString();
     });
     if (attempted) {
-      alert("You have already attempted this quiz. Clear your attempt first if you want to try again.");
+      showToast("You have already attempted this quiz. Clear your attempt first if you want to try again.", "warning");
       return;
     }
     setSelectedQuiz(quiz);
@@ -415,6 +452,19 @@ export default function QuizInterface() {
       correctAnswer: q.correctAnswer,
       marks: Number(q.marks),
     }));
+    
+    // Calculate total marks from questions and compare with quiz points
+    const totalQuestionMarks = processedQuestions.reduce((sum, q) => sum + Number(q.marks), 0);
+    if (totalQuestionMarks !== Number(newQuiz.points)) {
+      // Show the modal instead of alert
+      setPointsValidationData({
+        quizPoints: Number(newQuiz.points),
+        questionMarks: totalQuestionMarks
+      });
+      setIsPointsModalOpen(true);
+      return;
+    }
+    
     const quizToSubmit = { ...newQuiz, questions: processedQuestions };
     fetch("http://localhost:5000/api/quizzes", {
       method: "POST",
@@ -426,55 +476,75 @@ export default function QuizInterface() {
     })
       .then((res) => res.json())
       .then((data) => {
-        alert("Quiz created successfully!");
+        showToast("Quiz created successfully!", "success");
         // Re–fetch quizzes so the new one is visible
         fetchQuizzes();
         setCreateQuizMode(false);
         setCreateQuizStep(1);
         setNewQuiz({ title: "", topic: "", difficulty: "", timeLimit: 0, points: 0, clearable: true, questions: [] });
       })
-      .catch((err) => console.error("Error creating quiz:", err));
+      .catch((err) => {
+        console.error("Error creating quiz:", err);
+        showToast("Failed to create quiz. Please try again.", "error");
+      });
   };
 
   // Delete a quiz with confirmation
   const deleteQuiz = (quizId: string) => {
-    if (window.confirm("Are you sure you want to delete this quiz?")) {
-      fetch(`http://localhost:5000/api/quizzes/${quizId}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      })
-        .then((res) => res.json())
-        .then(() => {
-          setQuizzes(quizzes.filter((q) => q._id !== quizId));
+    showConfirmModal(
+      "Delete Quiz",
+      "Are you sure you want to delete this quiz? This action cannot be undone.",
+      () => {
+        fetch(`http://localhost:5000/api/quizzes/${quizId}`, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
         })
-        .catch((err) => console.error("Error deleting quiz:", err));
-    }
+          .then((res) => res.json())
+          .then(() => {
+            setQuizzes(quizzes.filter((q) => q._id !== quizId));
+            showToast("Quiz deleted successfully", "success");
+          })
+          .catch((err) => {
+            console.error("Error deleting quiz:", err);
+            showToast("Failed to delete quiz", "error");
+          });
+      }
+    );
   };
 
   // Clear a single quiz attempt
   const clearAttempt = (attemptId?: string, clearable?: boolean) => {
     if (!attemptId) return;
     if (!clearable) {
-      alert("This attempt cannot be cleared.");
+      showToast("This attempt cannot be cleared.", "warning");
       return;
     }
-    if (window.confirm("Are you sure you want to clear this attempt?")) {
-      fetch(`http://localhost:5000/api/quizAttempts/${attemptId}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      })
-        .then((res) => res.json())
-        .then(() => {
-          fetchAttempts();
-          // Also refresh quizzes to update the UI
-          fetchQuizzes();
+    
+    showConfirmModal(
+      "Clear Attempt",
+      "Are you sure you want to clear this attempt? This will allow you to take the quiz again.",
+      () => {
+        fetch(`http://localhost:5000/api/quizAttempts/${attemptId}`, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
         })
-        .catch((err) => console.error("Error clearing attempt:", err));
-    }
+          .then((res) => res.json())
+          .then(() => {
+            fetchAttempts();
+            // Also refresh quizzes to update the UI
+            fetchQuizzes();
+            showToast("Attempt cleared successfully", "success");
+          })
+          .catch((err) => {
+            console.error("Error clearing attempt:", err);
+            showToast("Failed to clear attempt", "error");
+          });
+      }
+    );
   };
 
   // Render functions for different views
@@ -897,22 +967,29 @@ export default function QuizInterface() {
             variant="outline"
             className="text-red-500 border-red-500 hover:bg-red-500 hover:text-white"
             onClick={() => {
-              if (window.confirm("Are you sure you want to clear all attempts?")) {
-                fetch(`http://localhost:5000/api/quizAttempts/clearAll?user=${userData.rollno}`, { 
-                  method: "DELETE",
-                  headers: {
-                    Authorization: `Bearer ${token}`
-                  }
-                })
-                  .then((res) => res.json())
-                  .then(() => {
-                    alert("All clearable attempts cleared successfully!");
-                    fetchAttempts();
-                    // Also refresh quizzes to update the UI
-                    fetchQuizzes();
+              showConfirmModal(
+                "Clear All Attempts",
+                "Are you sure you want to clear all clearable attempts? This cannot be undone.",
+                () => {
+                  fetch(`http://localhost:5000/api/quizAttempts/clearAll?user=${userData.rollno}`, { 
+                    method: "DELETE",
+                    headers: {
+                      Authorization: `Bearer ${token}`
+                    }
                   })
-                  .catch((err) => console.error("Error clearing all attempts:", err));
-              }
+                    .then((res) => res.json())
+                    .then(() => {
+                      showToast("All clearable attempts cleared successfully!", "success");
+                      fetchAttempts();
+                      // Also refresh quizzes to update the UI
+                      fetchQuizzes();
+                    })
+                    .catch((err) => {
+                      console.error("Error clearing all attempts:", err);
+                      showToast("Failed to clear attempts", "error");
+                    });
+                }
+              )
             }}
           >
             Clear All History
@@ -974,7 +1051,7 @@ export default function QuizInterface() {
     isTabWarningModalOpen && (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
-          <h3 className="text-xl font-bold text-red-600 mb-4">⚠️ Warning: Tab Change Detected</h3>
+          <h3 className="text-xl font-bold text-yellow-600 mb-4">⚠️ Warning: Tab Change Detected</h3>
           <p className="mb-4">
             You have changed tabs or minimized the window. This is your first warning.
           </p>
@@ -982,7 +1059,7 @@ export default function QuizInterface() {
             If you change tabs again, your quiz attempt will be automatically submitted.
           </p>
           <Button
-            className="bg-purple-600 text-white hover:bg-purple-700 w-full"
+            className="bg-yellow-600 text-white hover:bg-yellow-700 w-full"
             onClick={() => setIsTabWarningModalOpen(false)}
           >
             I Understand
@@ -1027,6 +1104,90 @@ export default function QuizInterface() {
             </Button>
           </div>
         </div>
+      </div>
+    )
+  );
+
+  // Render points validation modal
+  const renderPointsValidationModal = () => (
+    isPointsModalOpen && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
+          <div className="flex items-center mb-4">
+            <AlertTriangle className="h-6 w-6 text-yellow-600 mr-2" />
+            <h3 className="text-xl font-bold text-yellow-600">Points Mismatch</h3>
+          </div>
+          <p className="mb-6 text-gray-700">
+            The total points for the quiz ({pointsValidationData.quizPoints}) do not match the sum of question marks ({pointsValidationData.questionMarks}). Please adjust the points to match the sum of question marks.
+          </p>
+          <div className="flex space-x-3">
+            <Button
+              className="bg-blue-600 text-white hover:bg-blue-700 flex-1"
+              onClick={() => setIsPointsModalOpen(false)}
+            >
+              I Understand
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  );
+
+  // Render confirmation modal
+  const renderConfirmModal = () => (
+    isConfirmModalOpen && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
+          <div className="flex items-center mb-4">
+            <Trash2 className="h-6 w-6 text-red-600 mr-2" />
+            <h3 className="text-xl font-bold text-red-600">{confirmAction.title}</h3>
+          </div>
+          <p className="mb-6 text-gray-700">{confirmAction.message}</p>
+          <div className="flex space-x-3">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setIsConfirmModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-red-600 text-white hover:bg-red-700 flex-1"
+              onClick={() => {
+                confirmAction.onConfirm();
+                setIsConfirmModalOpen(false);
+              }}
+            >
+              Confirm
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  );
+
+  // Render toast notification
+  const renderToast = () => (
+    toast.visible && (
+      <div className={`fixed bottom-4 right-4 max-w-md w-full p-4 rounded-lg shadow-lg z-50 flex items-center ${
+        toast.type === 'success' ? 'bg-green-100 border-l-4 border-green-500' :
+        toast.type === 'error' ? 'bg-red-100 border-l-4 border-red-500' :
+        'bg-yellow-100 border-l-4 border-yellow-500'
+      }`}>
+        {toast.type === 'success' ? (
+          <CheckCircle className="h-6 w-6 text-green-500 mr-3" />
+        ) : toast.type === 'error' ? (
+          <X className="h-6 w-6 text-red-500 mr-3" />
+        ) : (
+          <AlertTriangle className="h-6 w-6 text-yellow-500 mr-3" />
+        )}
+        <p className={`${
+          toast.type === 'success' ? 'text-green-800' :
+          toast.type === 'error' ? 'text-red-800' :
+          'text-yellow-800'
+        }`}>
+          {toast.message}
+        </p>
       </div>
     )
   );
@@ -1118,6 +1279,9 @@ export default function QuizInterface() {
       </div>
       {renderTabWarningModal()}
       {renderTabEndModal()}
+      {renderPointsValidationModal()}
+      {renderConfirmModal()}
+      {renderToast()}
     </div>
   );
 }
