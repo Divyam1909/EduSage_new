@@ -87,6 +87,18 @@ const CollapsibleSection = ({ title, defaultOpen = false, children }: { title: s
   );
 };
 
+// Add these types for interview history
+interface InterviewHistoryItem {
+  id: string;
+  date: string;
+  jobRole: string;
+  techStack: string;
+  experience: string;
+  interviewMode: 'video' | 'chat';
+  overallFeedback: any;
+  questions: InterviewQuestion[];
+}
+
 // Main component for the AI Assistant page that provides AI-powered learning tools
 export default function Component() {
   // State for managing selected topics and chat modal visibility
@@ -1159,6 +1171,71 @@ export default function Component() {
     }
   };
 
+  // Add this with the other state declarations near the beginning of the component
+  const [interviewHistory, setInterviewHistory] = useState<InterviewHistoryItem[]>([]);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [selectedHistoryItem, setSelectedHistoryItem] = useState<InterviewHistoryItem | null>(null);
+
+  // Add this useEffect to load interview history from localStorage
+  useEffect(() => {
+    // Load interview history from localStorage
+    const storedHistory = localStorage.getItem('interviewHistory');
+    if (storedHistory) {
+      try {
+        setInterviewHistory(JSON.parse(storedHistory));
+      } catch (error) {
+        console.error('Error parsing interview history from localStorage:', error);
+      }
+    }
+  }, []);
+
+  // Add function to save interview to history
+  const saveInterviewToHistory = () => {
+    if (!interviewData.overallFeedback) return;
+    
+    const newHistoryItem: InterviewHistoryItem = {
+      id: Date.now().toString(),
+      date: new Date().toLocaleString(),
+      jobRole: interviewData.jobRole,
+      techStack: interviewData.techStack,
+      experience: interviewData.experience,
+      interviewMode: interviewData.interviewMode,
+      overallFeedback: interviewData.overallFeedback,
+      questions: interviewData.questions
+    };
+    
+    const updatedHistory = [newHistoryItem, ...interviewHistory];
+    setInterviewHistory(updatedHistory);
+    
+    // Save to localStorage
+    localStorage.setItem('interviewHistory', JSON.stringify(updatedHistory));
+  };
+
+  // Add this to save interview when it's complete
+  useEffect(() => {
+    // When interview is complete and has feedback, save it to history
+    if (interviewData.status === 'complete' && interviewData.overallFeedback) {
+      saveInterviewToHistory();
+    }
+  }, [interviewData.status]);
+
+  // Function to view a specific interview history item
+  const viewHistoryItem = (item: InterviewHistoryItem) => {
+    setSelectedHistoryItem(item);
+  };
+
+  // Function to delete a history item
+  const deleteHistoryItem = (id: string) => {
+    const updatedHistory = interviewHistory.filter(item => item.id !== id);
+    setInterviewHistory(updatedHistory);
+    localStorage.setItem('interviewHistory', JSON.stringify(updatedHistory));
+    
+    // If the deleted item was selected, clear the selection
+    if (selectedHistoryItem && selectedHistoryItem.id === id) {
+      setSelectedHistoryItem(null);
+    }
+  };
+
   return (
     <div className="flex h-screen bg-purple-50">
       {/* Left Side Navigation Menu */}
@@ -1443,7 +1520,17 @@ export default function Component() {
               {/* Interview Setup Form */}
               {interviewData.status === 'setup' && (
                 <div className="space-y-6">
-                  <h3 className="text-lg font-medium text-purple-800">Let's set up your interview practice</h3>
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-medium text-purple-800">Let's set up your interview practice</h3>
+                    <Button
+                      variant="outline"
+                      className="border-purple-500 text-purple-700 hover:bg-purple-50"
+                      onClick={() => setIsHistoryModalOpen(true)}
+                    >
+                      <Clock className="mr-2 h-4 w-4" />
+                      View Previous Interviews
+                    </Button>
+                  </div>
                   
                   {interviewData.error && (
                     <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
@@ -2261,6 +2348,226 @@ export default function Component() {
               >
                 Continue to Results
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Interview History Modal */}
+      {isHistoryModalOpen && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-[60]">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-purple-800 text-white">
+              <h2 className="text-xl font-bold">Interview History</h2>
+              <Button 
+                variant="ghost" 
+                className="text-white hover:bg-purple-700"
+                onClick={() => {
+                  setIsHistoryModalOpen(false);
+                  setSelectedHistoryItem(null);
+                }}
+              >
+                Close
+              </Button>
+            </div>
+            
+            <div className="flex-1 overflow-hidden flex">
+              {/* List of interviews */}
+              <div className="w-1/3 border-r border-gray-200 overflow-y-auto">
+                {interviewHistory.length === 0 ? (
+                  <div className="p-6 text-center">
+                    <p className="text-gray-500">No interview history found</p>
+                  </div>
+                ) : (
+                  <ul className="divide-y divide-gray-200">
+                    {interviewHistory.map((item) => (
+                      <li 
+                        key={item.id} 
+                        className={`p-4 hover:bg-purple-50 cursor-pointer ${
+                          selectedHistoryItem?.id === item.id ? 'bg-purple-100' : ''
+                        }`}
+                        onClick={() => viewHistoryItem(item)}
+                      >
+                        <div className="flex justify-between">
+                          <div>
+                            <p className="font-medium text-purple-900">{item.jobRole}</p>
+                            <p className="text-sm text-gray-600">{item.date}</p>
+                          </div>
+                          <div className="flex items-center">
+                            <span className="px-2 py-1 rounded text-sm bg-purple-100 text-purple-800">
+                              {item.interviewMode === 'video' ? 'Video' : 'Chat'}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteHistoryItem(item.id);
+                              }}
+                              className="ml-2 text-red-500 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                        <p className="text-sm text-gray-700 mt-1">{item.techStack}</p>
+                        <div className="mt-2 flex items-center">
+                          <span className="text-sm font-medium text-gray-700 mr-2">Score:</span>
+                          <span className="font-medium text-purple-700">
+                            {item.overallFeedback.overall_score?.total || item.overallFeedback.overall_score || 0}/10
+                          </span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              
+              {/* Interview details */}
+              <div className="w-2/3 overflow-y-auto p-4">
+                {selectedHistoryItem ? (
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center border-b border-gray-200 pb-3">
+                      <h3 className="text-xl font-bold text-purple-800">{selectedHistoryItem.jobRole}</h3>
+                      <div className="flex items-center space-x-2">
+                        <span className="px-2 py-1 rounded text-sm bg-purple-100 text-purple-800">
+                          {selectedHistoryItem.experience}
+                        </span>
+                        <span className="px-2 py-1 rounded text-sm bg-purple-100 text-purple-800">
+                          {selectedHistoryItem.interviewMode}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-purple-50 p-4 rounded-lg">
+                      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+                        <div className="bg-white rounded-lg p-3 text-center shadow-sm">
+                          <div className="text-2xl font-bold text-purple-800">
+                            {selectedHistoryItem.overallFeedback.overall_score?.total || selectedHistoryItem.overallFeedback.overall_score || 0}/10
+                          </div>
+                          <div className="text-xs text-gray-600">Total Score</div>
+                        </div>
+                        
+                        <div className="bg-white rounded-lg p-3 text-center shadow-sm">
+                          <div className="text-xl font-bold text-purple-700">
+                            {selectedHistoryItem.overallFeedback.overall_score?.technical_knowledge || '—'}/10
+                          </div>
+                          <div className="text-xs text-gray-600">Technical</div>
+                        </div>
+                        
+                        <div className="bg-white rounded-lg p-3 text-center shadow-sm">
+                          <div className="text-xl font-bold text-purple-700">
+                            {selectedHistoryItem.overallFeedback.overall_score?.communication || '—'}/10
+                          </div>
+                          <div className="text-xs text-gray-600">Communication</div>
+                        </div>
+                        
+                        <div className="bg-white rounded-lg p-3 text-center shadow-sm">
+                          <div className="text-xl font-bold text-purple-700">
+                            {selectedHistoryItem.overallFeedback.overall_score?.problem_solving || '—'}/10
+                          </div>
+                          <div className="text-xs text-gray-600">Problem Solving</div>
+                        </div>
+                        
+                        <div className="bg-white rounded-lg p-3 text-center shadow-sm">
+                          <div className="text-xl font-bold text-purple-700">
+                            {selectedHistoryItem.overallFeedback.overall_score?.culture_fit || '—'}/10
+                          </div>
+                          <div className="text-xs text-gray-600">Culture Fit</div>
+                        </div>
+                      </div>
+                      
+                      <CollapsibleSection title="Overall Performance" defaultOpen={true}>
+                        <div className="bg-white p-4 rounded-lg">
+                          <p className="text-gray-700">{selectedHistoryItem.overallFeedback.summary}</p>
+                        </div>
+                      </CollapsibleSection>
+                      
+                      <CollapsibleSection title="Strengths & Areas for Improvement">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <h4 className="font-medium text-purple-700 mb-2">Key Strengths</h4>
+                            <ul className="space-y-1">
+                              {selectedHistoryItem.overallFeedback.key_strengths.map((strength: string, index: number) => (
+                                <li key={index} className="bg-white p-2 rounded border-l-4 border-green-400 text-sm">
+                                  {strength}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          
+                          <div>
+                            <h4 className="font-medium text-purple-700 mb-2">Areas for Improvement</h4>
+                            <ul className="space-y-1">
+                              {selectedHistoryItem.overallFeedback.key_weaknesses.map((weakness: string, index: number) => (
+                                <li key={index} className="bg-white p-2 rounded border-l-4 border-amber-400 text-sm">
+                                  {weakness}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </CollapsibleSection>
+                      
+                      <CollapsibleSection title="Question-by-Question Feedback">
+                        <div className="space-y-3">
+                          {selectedHistoryItem.questions.map((question, index) => (
+                            <div key={index} className="bg-white p-3 rounded-lg border border-purple-100">
+                              <div className="flex justify-between items-center mb-1">
+                                <h4 className="font-medium text-purple-800 text-sm">Question {index + 1}</h4>
+                                {question.evaluation && (
+                                  <span className="px-2 py-0.5 bg-purple-100 rounded text-purple-800 text-xs">
+                                    Score: {question.evaluation.score?.overall || question.evaluation.score || 0}/10
+                                  </span>
+                                )}
+                              </div>
+                              
+                              <p className="text-gray-700 text-sm mb-2">{question.question}</p>
+                              
+                              {question.answer && (
+                                <div className="mb-2">
+                                  <p className="text-purple-800 font-medium text-xs mb-1">Answer:</p>
+                                  <p className="text-gray-600 text-xs bg-gray-50 p-2 rounded">{question.answer}</p>
+                                </div>
+                              )}
+                              
+                              {question.evaluation && (
+                                <div>
+                                  <p className="text-purple-800 font-medium text-xs mb-1">Feedback:</p>
+                                  <p className="text-gray-700 text-xs">
+                                    {question.evaluation.feedback?.summary || question.evaluation.feedback}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </CollapsibleSection>
+                      
+                      <div className="border-t pt-3 mt-3">
+                        <h4 className="font-medium text-purple-700 mb-2">Hire Recommendation</h4>
+                        <div className="flex justify-center">
+                          <div className={`
+                            px-4 py-2 rounded-full font-bold text-sm
+                            ${selectedHistoryItem.overallFeedback.hire_recommendation.includes('Strong') ? 'bg-green-100 text-green-800' : 
+                              selectedHistoryItem.overallFeedback.hire_recommendation.includes('Hire') ? 'bg-blue-100 text-blue-800' : 
+                              selectedHistoryItem.overallFeedback.hire_recommendation.includes('Consider') ? 'bg-yellow-100 text-yellow-800' : 
+                              'bg-red-100 text-red-800'}
+                          `}>
+                            {selectedHistoryItem.overallFeedback.hire_recommendation}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-full flex items-center justify-center">
+                    <div className="text-center">
+                      <p className="text-gray-500 text-lg">Select an interview from the list to view details</p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
