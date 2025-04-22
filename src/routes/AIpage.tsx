@@ -10,7 +10,11 @@ import {
   Mic,
   Video,
   AlertTriangle,
-  Clock
+  Clock,
+  X,
+  Plus,
+  ChevronDown,
+  Search
 } from 'lucide-react'
 import { Link } from "react-router-dom"
 import { 
@@ -57,12 +61,62 @@ declare global {
   }
 }
 
+// Collapsible Section Component
+const CollapsibleSection = ({ title, defaultOpen = false, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) => {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  
+  return (
+    <div className="border border-purple-200 rounded-lg mb-4 overflow-hidden">
+      <button 
+        className="w-full p-3 bg-purple-50 flex justify-between items-center text-left"
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <h4 className="font-medium text-purple-800">{title}</h4>
+        <div className={`transform transition-transform ${isOpen ? 'rotate-180' : ''}`}>
+          <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M1 1L6 6L11 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+        </div>
+      </button>
+      <div className={`transition-all duration-300 ${isOpen ? 'max-h-screen opacity-100 overflow-y-auto' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+        <div className="p-4">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Main component for the AI Assistant page that provides AI-powered learning tools
 export default function Component() {
   // State for managing selected topics and chat modal visibility
   const [selectedTopics, setSelectedTopics] = useState<string[]>([])
   const [isChatModalOpen, setIsChatModalOpen] = useState(false)
   const [isInterviewModalOpen, setIsInterviewModalOpen] = useState(false)
+  
+  // Common tech skills/languages/frameworks
+  const validTechStacks = [
+    'javascript', 'typescript', 'python', 'java', 'c#', 'c++', 'go', 'rust', 'ruby', 'php',
+    'react', 'angular', 'vue', 'svelte', 'node', 'express', 'django', 'flask', 'spring', 'asp.net',
+    'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'terraform', 'jenkins', 'git',
+    'mongodb', 'mysql', 'postgresql', 'sql server', 'oracle', 'redis', 'elasticsearch',
+    'machine learning', 'data science', 'artificial intelligence', 'deep learning', 'nlp',
+    'html', 'css', 'sass', 'less', 'tailwind', 'bootstrap', 'material-ui', 'chakra-ui',
+    'devops', 'security', 'blockchain', 'graphql', 'rest api', 'microservices'
+  ];
+  
+  // Common job roles in tech
+  const validJobRoles = [
+    'frontend developer', 'backend developer', 'fullstack developer', 'web developer', 
+    'software engineer', 'software developer', 'mobile developer', 'ios developer', 'android developer',
+    'data scientist', 'data analyst', 'data engineer', 'machine learning engineer', 'ai engineer',
+    'devops engineer', 'site reliability engineer', 'cloud engineer', 'security engineer',
+    'qa engineer', 'test engineer', 'automation engineer', 'database administrator', 'dba',
+    'product manager', 'project manager', 'scrum master', 'agile coach', 'ui designer', 'ux designer',
+    'ui/ux designer', 'graphic designer', 'technical writer', 'content developer',
+    'systems administrator', 'network engineer', 'it support', 'helpdesk technician',
+    'blockchain developer', 'game developer', 'ar/vr developer', 'embedded systems engineer'
+  ];
   
   // Chat iframe reference
   const chatIframeRef = useRef<HTMLIFrameElement>(null);
@@ -108,6 +162,166 @@ export default function Component() {
   
   // Add this with the other state declarations near the beginning of the component
   const [currentAnswer, setCurrentAnswer] = useState<string>('');
+  
+  // Add these new state variables for dropdowns
+  const [jobRoleSearchTerm, setJobRoleSearchTerm] = useState('');
+  const [isJobRoleDropdownOpen, setIsJobRoleDropdownOpen] = useState(false);
+  const [techStackSearchTerm, setTechStackSearchTerm] = useState('');
+  const [isTechStackDropdownOpen, setIsTechStackDropdownOpen] = useState(false);
+  const [selectedTechStacks, setSelectedTechStacks] = useState<string[]>([]);
+  
+  // Add state for keyboard navigation
+  const [highlightedJobRoleIndex, setHighlightedJobRoleIndex] = useState<number>(-1);
+  const [highlightedTechStackIndex, setHighlightedTechStackIndex] = useState<number>(-1);
+  
+  const jobRoleDropdownRef = useRef<HTMLDivElement>(null);
+  const techStackDropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Filter job roles based on search term
+  const filteredJobRoles = interviewData.status === 'setup' ? validJobRoles.filter((role: string) => 
+    role.toLowerCase().includes(jobRoleSearchTerm.toLowerCase())
+  ) : [];
+  
+  // Filter tech stacks based on search term
+  const filteredTechStacks = interviewData.status === 'setup' ? validTechStacks.filter((tech: string) => 
+    tech.toLowerCase().includes(techStackSearchTerm.toLowerCase())
+  ) : [];
+
+  // Handler to add a tech stack
+  const addTechStack = (tech: string) => {
+    if (!selectedTechStacks.includes(tech)) {
+      setSelectedTechStacks([...selectedTechStacks, tech]);
+    }
+    setTechStackSearchTerm('');
+    setHighlightedTechStackIndex(-1);
+  };
+
+  // Handler to remove a tech stack
+  const removeTechStack = (tech: string) => {
+    setSelectedTechStacks(selectedTechStacks.filter(t => t !== tech));
+  };
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (jobRoleDropdownRef.current && !jobRoleDropdownRef.current.contains(event.target as Node)) {
+        setIsJobRoleDropdownOpen(false);
+        setHighlightedJobRoleIndex(-1);
+      }
+      if (techStackDropdownRef.current && !techStackDropdownRef.current.contains(event.target as Node)) {
+        setIsTechStackDropdownOpen(false);
+        setHighlightedTechStackIndex(-1);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Update interview data when job role is selected
+  const selectJobRole = (role: string) => {
+    setInterviewData({...interviewData, jobRole: role});
+    setJobRoleSearchTerm(role);
+    setIsJobRoleDropdownOpen(false);
+    setHighlightedJobRoleIndex(-1);
+  };
+
+  // Handle keyboard navigation for job roles dropdown
+  const handleJobRoleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!isJobRoleDropdownOpen) {
+      if (e.key === 'ArrowDown' || e.key === 'Enter') {
+        setIsJobRoleDropdownOpen(true);
+        e.preventDefault();
+      }
+      return;
+    }
+    
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setHighlightedJobRoleIndex(prev => 
+          prev < filteredJobRoles.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setHighlightedJobRoleIndex(prev => prev > 0 ? prev - 1 : 0);
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (highlightedJobRoleIndex >= 0 && highlightedJobRoleIndex < filteredJobRoles.length) {
+          selectJobRole(filteredJobRoles[highlightedJobRoleIndex]);
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setIsJobRoleDropdownOpen(false);
+        setHighlightedJobRoleIndex(-1);
+        break;
+    }
+  };
+
+  // Handle keyboard navigation for tech stack dropdown
+  const handleTechStackKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!isTechStackDropdownOpen) {
+      if (e.key === 'ArrowDown' || e.key === 'Enter') {
+        setIsTechStackDropdownOpen(true);
+        e.preventDefault();
+      }
+      return;
+    }
+    
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setHighlightedTechStackIndex(prev => 
+          prev < filteredTechStacks.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setHighlightedTechStackIndex(prev => prev > 0 ? prev - 1 : 0);
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (highlightedTechStackIndex >= 0 && highlightedTechStackIndex < filteredTechStacks.length) {
+          addTechStack(filteredTechStacks[highlightedTechStackIndex]);
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setIsTechStackDropdownOpen(false);
+        setHighlightedTechStackIndex(-1);
+        break;
+    }
+  };
+
+  // Reset highlighted index when dropdown items change
+  useEffect(() => {
+    if (filteredJobRoles.length > 0 && isJobRoleDropdownOpen) {
+      setHighlightedJobRoleIndex(highlightedJobRoleIndex < filteredJobRoles.length ? highlightedJobRoleIndex : 0);
+    } else {
+      setHighlightedJobRoleIndex(-1);
+    }
+  }, [filteredJobRoles, isJobRoleDropdownOpen]);
+
+  useEffect(() => {
+    if (filteredTechStacks.length > 0 && isTechStackDropdownOpen) {
+      setHighlightedTechStackIndex(highlightedTechStackIndex < filteredTechStacks.length ? highlightedTechStackIndex : 0);
+    } else {
+      setHighlightedTechStackIndex(-1);
+    }
+  }, [filteredTechStacks, isTechStackDropdownOpen]);
+  
+  // Update tech stack in interview data when tech stacks change
+  useEffect(() => {
+    setInterviewData(prev => ({
+      ...prev, 
+      techStack: selectedTechStacks.join(', ')
+    }));
+  }, [selectedTechStacks]);
   
   // Tab visibility detection
   useEffect(() => {
@@ -349,30 +563,6 @@ export default function Component() {
   // Add this function to validate the job role and tech stack
   const validateInterviewInputs = () => {
     const errors: {jobRole?: string, techStack?: string} = {};
-    
-    // Common tech skills/languages/frameworks
-    const validTechStacks = [
-      'javascript', 'typescript', 'python', 'java', 'c#', 'c++', 'go', 'rust', 'ruby', 'php',
-      'react', 'angular', 'vue', 'svelte', 'node', 'express', 'django', 'flask', 'spring', 'asp.net',
-      'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'terraform', 'jenkins', 'git',
-      'mongodb', 'mysql', 'postgresql', 'sql server', 'oracle', 'redis', 'elasticsearch',
-      'machine learning', 'data science', 'artificial intelligence', 'deep learning', 'nlp',
-      'html', 'css', 'sass', 'less', 'tailwind', 'bootstrap', 'material-ui', 'chakra-ui',
-      'devops', 'security', 'blockchain', 'graphql', 'rest api', 'microservices'
-    ];
-    
-    // Common job roles in tech
-    const validJobRoles = [
-      'frontend developer', 'backend developer', 'fullstack developer', 'web developer', 
-      'software engineer', 'software developer', 'mobile developer', 'ios developer', 'android developer',
-      'data scientist', 'data analyst', 'data engineer', 'machine learning engineer', 'ai engineer',
-      'devops engineer', 'site reliability engineer', 'cloud engineer', 'security engineer',
-      'qa engineer', 'test engineer', 'automation engineer', 'database administrator', 'dba',
-      'product manager', 'project manager', 'scrum master', 'agile coach', 'ui designer', 'ux designer',
-      'ui/ux designer', 'graphic designer', 'technical writer', 'content developer',
-      'systems administrator', 'network engineer', 'it support', 'helpdesk technician',
-      'blockchain developer', 'game developer', 'ar/vr developer', 'embedded systems engineer'
-    ];
     
     // Check if the job role is valid (case insensitive)
     const jobRoleLower = interviewData.jobRole.toLowerCase().trim();
@@ -876,32 +1066,6 @@ export default function Component() {
     }
   }, [interviewData.status]);
 
-  // Now create a collapsible component that we'll use for the feedback sections
-  const CollapsibleSection = ({ title, defaultOpen = false, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) => {
-    const [isOpen, setIsOpen] = useState(defaultOpen);
-    
-    return (
-      <div className="border border-purple-200 rounded-lg mb-4 overflow-hidden">
-        <button 
-          className="w-full p-3 bg-purple-50 flex justify-between items-center text-left"
-          onClick={() => setIsOpen(!isOpen)}
-        >
-          <h4 className="font-medium text-purple-800">{title}</h4>
-          <div className={`transform transition-transform ${isOpen ? 'rotate-180' : ''}`}>
-            <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M1 1L6 6L11 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            </svg>
-          </div>
-        </button>
-        <div className={`transition-all duration-300 ${isOpen ? 'max-h-screen opacity-100 overflow-y-auto' : 'max-h-0 opacity-0 overflow-hidden'}`}>
-          <div className="p-4">
-            {children}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   // Helper function to format time remaining as mm:ss
   const formatTimeRemaining = () => {
     const minutes = Math.floor(timeRemaining / 60);
@@ -1287,29 +1451,142 @@ export default function Component() {
                     </div>
                   )}
                   
-                  <div className="space-y-2">
+                  {/* Job Role Dropdown */}
+                  <div className="space-y-2" ref={jobRoleDropdownRef}>
                     <Label htmlFor="jobRole">Job Role / Position</Label>
-                    <Input 
-                      id="jobRole"
-                      value={interviewData.jobRole}
-                      onChange={(e) => setInterviewData({...interviewData, jobRole: e.target.value})}
-                      placeholder="e.g., Frontend Developer, Data Scientist"
-                      className={invalidFields.jobRole ? "border-red-500" : ""}
-                    />
+                    <div className="relative">
+                      <div className="flex items-center border border-gray-300 rounded-md overflow-hidden">
+                        <div className="p-2 text-gray-500">
+                          <Search className="h-4 w-4" />
+                        </div>
+                        <input
+                          id="jobRole"
+                          value={jobRoleSearchTerm}
+                          onChange={(e) => {
+                            setJobRoleSearchTerm(e.target.value);
+                            setIsJobRoleDropdownOpen(true);
+                            setInterviewData({...interviewData, jobRole: e.target.value});
+                          }}
+                          onFocus={() => setIsJobRoleDropdownOpen(true)}
+                          onKeyDown={handleJobRoleKeyDown}
+                          placeholder="Search for a job role"
+                          className={`w-full px-2 py-2 outline-none ${invalidFields.jobRole ? "border-red-500" : ""}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setIsJobRoleDropdownOpen(!isJobRoleDropdownOpen)}
+                          className="p-2 text-gray-500"
+                        >
+                          <ChevronDown className="h-4 w-4" />
+                        </button>
+                      </div>
+                      
+                      {isJobRoleDropdownOpen && (
+                        <div className="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md max-h-60 overflow-auto border border-gray-200">
+                          {filteredJobRoles.length > 0 ? (
+                            <ul className="py-1">
+                              {filteredJobRoles.map((role: string, index: number) => (
+                                <li 
+                                  key={index}
+                                  className={`px-4 py-2 cursor-pointer ${
+                                    index === highlightedJobRoleIndex 
+                                      ? 'bg-purple-100 text-purple-800' 
+                                      : 'text-gray-700 hover:bg-purple-50'
+                                  }`}
+                                  onClick={() => selectJobRole(role)}
+                                  onMouseEnter={() => setHighlightedJobRoleIndex(index)}
+                                >
+                                  {role}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="px-4 py-2 text-gray-500">No matching job roles</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
                     {invalidFields.jobRole && (
                       <p className="text-red-500 text-sm mt-1">{invalidFields.jobRole}</p>
                     )}
                   </div>
                   
-                  <div className="space-y-2">
+                  {/* Tech Stack Dropdown */}
+                  <div className="space-y-2" ref={techStackDropdownRef}>
                     <Label htmlFor="techStack">Technologies / Skills</Label>
-                    <Input 
-                      id="techStack"
-                      value={interviewData.techStack}
-                      onChange={(e) => setInterviewData({...interviewData, techStack: e.target.value})}
-                      placeholder="e.g., React, Node.js, Python"
-                      className={invalidFields.techStack ? "border-red-500" : ""}
-                    />
+                    
+                    {/* Selected tech stacks display */}
+                    {selectedTechStacks.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {selectedTechStacks.map((tech: string, index: number) => (
+                          <div key={index} className="flex items-center bg-purple-100 text-purple-800 px-2 py-1 rounded-md">
+                            <span>{tech}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeTechStack(tech)}
+                              className="ml-2 text-purple-500 hover:text-purple-700"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    <div className="relative">
+                      <div className="flex items-center border border-gray-300 rounded-md overflow-hidden">
+                        <div className="p-2 text-gray-500">
+                          <Search className="h-4 w-4" />
+                        </div>
+                        <input
+                          id="techStack"
+                          value={techStackSearchTerm}
+                          onChange={(e) => {
+                            setTechStackSearchTerm(e.target.value);
+                            setIsTechStackDropdownOpen(true);
+                          }}
+                          onFocus={() => setIsTechStackDropdownOpen(true)}
+                          onKeyDown={handleTechStackKeyDown}
+                          placeholder="Add technologies or skills"
+                          className={`w-full px-2 py-2 outline-none ${invalidFields.techStack ? "border-red-500" : ""}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setIsTechStackDropdownOpen(!isTechStackDropdownOpen)}
+                          className="p-2 text-gray-500"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </button>
+                      </div>
+                      
+                      {isTechStackDropdownOpen && (
+                        <div className="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md max-h-60 overflow-auto border border-gray-200">
+                          {filteredTechStacks.length > 0 ? (
+                            <ul className="py-1">
+                              {filteredTechStacks.map((tech: string, index: number) => (
+                                <li 
+                                  key={index}
+                                  className={`px-4 py-2 cursor-pointer ${
+                                    index === highlightedTechStackIndex 
+                                      ? 'bg-purple-100 text-purple-800' 
+                                      : 'text-gray-700 hover:bg-purple-50'
+                                  }`}
+                                  onClick={() => {
+                                    addTechStack(tech);
+                                    setIsTechStackDropdownOpen(false);
+                                  }}
+                                  onMouseEnter={() => setHighlightedTechStackIndex(index)}
+                                >
+                                  {tech}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="px-4 py-2 text-gray-500">No matching technologies</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
                     {invalidFields.techStack && (
                       <p className="text-red-500 text-sm mt-1">{invalidFields.techStack}</p>
                     )}
