@@ -6,14 +6,36 @@ const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "AIzaSyCKfzoOyl-M_JYKr9HU
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 // Use gemini-1.5-flash model for transcription and analysis
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const model = genAI.getGenerativeModel({ 
+  model: "gemini-1.5-flash",
+  generationConfig: {
+    temperature: 0.1, // Lower temperature for more accurate transcription
+    maxOutputTokens: 8192, // Allow for longer responses
+    responseMimeType: "application/json" // Indicate we prefer JSON responses
+  }
+});
+
+// Default timeout in milliseconds
+const DEFAULT_TIMEOUT = 30000; // 30 seconds
 
 /**
- * Transcribes audio content from a base64 string
+ * Creates a promise that rejects after the specified timeout
+ * @param ms Timeout in milliseconds
+ */
+const createTimeout = (ms: number) => {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(`Operation timed out after ${ms}ms`)), ms);
+  });
+};
+
+/**
+ * Transcribes audio content from a base64 string with timeout and error handling
  * @param audioBase64 Base64 encoded audio data
+ * @param timeoutMs Optional timeout in milliseconds
  * @returns Transcribed text
  */
-export const transcribeAudio = async (audioBase64: string): Promise<string> => {
+export const transcribeAudio = async (audioBase64: string, timeoutMs = DEFAULT_TIMEOUT): Promise<string> => {
+  const startTime = performance.now();
   try {
     // Extract the mime type and actual base64 data
     const matches = audioBase64.match(/^data:(.*);base64,(.*)$/);
@@ -24,14 +46,28 @@ export const transcribeAudio = async (audioBase64: string): Promise<string> => {
     const mimeType = matches[1];
     const base64Data = matches[2];
 
-    // Create an audio part for the Gemini API
-    // For now, we're using a simpler approach since Gemini doesn't directly support audio transcription
-    // We'll prompt the model to describe what it hears in the audio
-    const prompt = "Please transcribe the following audio content as accurately as possible.";
+    // Check if the audio file is too large (over 10MB)
+    const audioSize = base64Data.length * 0.75; // Base64 is ~33% larger than raw data
+    const isLargeAudio = audioSize > 10 * 1024 * 1024; // 10MB
     
-    // Currently, direct audio transcription isn't fully supported in Gemini API
-    // This is a simplified approach - in production, consider using a dedicated speech-to-text API
-    const result = await model.generateContent([
+    // Improved prompt for better transcription
+    const prompt = `
+      You are a highly accurate speech-to-text transcription system.
+      
+      Please transcribe the following audio content with proper punctuation, capitalization, and paragraph breaks.
+      
+      Rules:
+      1. Transcribe verbatim including filler words (um, uh, etc.)
+      2. Include speaker emotions in [brackets] when evident (e.g., [laughs], [pauses])
+      3. Mark unclear sections with [inaudible]
+      4. Do not add any commentary or additional text
+      5. Return only the transcribed text
+      
+      ${isLargeAudio ? "Note: This is part of a longer audio. Transcribe only what you hear in this segment." : ""}
+    `;
+    
+    // Use Promise.race to implement timeout
+    const transcriptionPromise = model.generateContent([
       prompt,
       {
         inlineData: {
@@ -41,11 +77,25 @@ export const transcribeAudio = async (audioBase64: string): Promise<string> => {
       }
     ]);
     
+    const result = await Promise.race([
+      transcriptionPromise,
+      createTimeout(timeoutMs)
+    ]) as any;
+    
     const response = await result.response;
-    return response.text();
-  } catch (error) {
+    const transcription = response.text().trim();
+    
+    const endTime = performance.now();
+    console.log(`Audio transcription completed in ${(endTime - startTime).toFixed(2)}ms`);
+    
+    return transcription;
+  } catch (error: any) {
     console.error("Error transcribing audio:", error);
-    throw error;
+    const endTime = performance.now();
+    console.log(`Audio transcription failed after ${(endTime - startTime).toFixed(2)}ms`);
+    
+    // Provide a fallback response in case of failure
+    return "Transcription failed. Please try again with a clearer audio recording.";
   }
 };
 
@@ -53,15 +103,23 @@ export const transcribeAudio = async (audioBase64: string): Promise<string> => {
  * Analyzes an audio interview response 
  * @param audioBase64 Base64 encoded audio data
  * @param question The interview question that was asked
+ * @param timeoutMs Optional timeout in milliseconds
  * @returns Analysis of the answer including feedback and transcript
  */
 export const analyzeAudioResponse = async (
   audioBase64: string,
-  question: string
+  question: string,
+  timeoutMs = DEFAULT_TIMEOUT * 2 // Double timeout for analysis
 ): Promise<any> => {
+  const startTime = performance.now();
   try {
     // First, transcribe the audio
     const transcription = await transcribeAudio(audioBase64);
+    
+    // Fail early if transcription failed
+    if (transcription.includes("Transcription failed")) {
+      throw new Error("Could not transcribe audio properly");
+    }
     
     // Then analyze the transcribed response in relation to the question
     const prompt = `
@@ -109,7 +167,31 @@ export const analyzeAudioResponse = async (
       Return ONLY the JSON object, no additional text.
     `;
     
-    const result = await model.generateContent(prompt);
+    // Extract the mime type and actual base64 data
+    const matches = audioBase64.match(/^data:(.*);base64,(.*)$/);
+    if (!matches || matches.length !== 3) {
+      throw new Error("Invalid base64 audio format");
+    }
+
+    const mimeType = matches[1];
+    const base64Data = matches[2];
+    
+    // Use Promise.race to implement timeout for analysis
+    const analysisPromise = model.generateContent([
+      prompt,
+      {
+        inlineData: {
+          mimeType,
+          data: base64Data
+        }
+      }
+    ]);
+    
+    const result = await Promise.race([
+      analysisPromise,
+      createTimeout(timeoutMs)
+    ]) as any;
+    
     const response = await result.response;
     const text = response.text();
     
@@ -123,20 +205,64 @@ export const analyzeAudioResponse = async (
         jsonText = text.split("```")[1].split("```")[0].trim();
       }
       
-      // Parse the JSON and add the transcript
-      const analysisResult = JSON.parse(jsonText);
+      // Try to parse the JSON
+      let analysisResult;
+      try {
+        analysisResult = JSON.parse(jsonText);
+      } catch (syntaxError) {
+        // If parsing fails, try to fix common JSON issues
+        const fixedJson = jsonText
+          .replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2":') // Fix unquoted keys
+          .replace(/'/g, '"'); // Replace single quotes with double quotes
+        analysisResult = JSON.parse(fixedJson);
+      }
       
       // Add the transcript to the result object
+      const endTime = performance.now();
+      console.log(`Audio analysis completed in ${(endTime - startTime).toFixed(2)}ms`);
+      
       return {
         ...analysisResult,
-        transcript: transcription
+        transcript: transcription,
+        processing_time_ms: Math.round(endTime - startTime)
       };
     } catch (parseError) {
       console.error("Failed to parse JSON from API response:", parseError);
       throw new Error("Invalid response format from AI model");
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error analyzing audio response:", error);
-    throw error;
+    const endTime = performance.now();
+    console.log(`Audio analysis failed after ${(endTime - startTime).toFixed(2)}ms`);
+    
+    // Provide a fallback response in case of failure
+    return {
+      score: {
+        overall: 5,
+        content: 5,
+        delivery: 5,
+        structure: 5,
+        confidence: 5
+      },
+      strengths: [
+        { category: "content", description: "Unable to fully analyze audio content." }
+      ],
+      weaknesses: [
+        { category: "technical", description: "There was an issue processing your audio. Try speaking more clearly or using a better microphone." }
+      ],
+      feedback: {
+        summary: "The system encountered difficulties analyzing your response.",
+        key_points: ["Audio quality may have been insufficient"],
+        improvement_tips: ["Try recording in a quieter environment", "Speak clearly and at a moderate pace"]
+      },
+      nonverbal_assessment: {
+        speaking_pace: "Unable to assess",
+        vocal_tone: "Unable to assess",
+        pauses: "Unable to assess"
+      },
+      transcript: "Transcription failed or was incomplete. Please try again.",
+      error: error.message,
+      processing_time_ms: Math.round(endTime - startTime)
+    };
   }
 }; 

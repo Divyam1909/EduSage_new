@@ -1348,13 +1348,22 @@ export default function Component() {
               <p className="text-purple-800">
                 Practice for your upcoming interviews with our AI-powered system. Get real-time feedback and improve your skills.
               </p>
-              <Button 
-                className="mt-4 bg-purple-500 hover:bg-purple-600 text-white"
-                onClick={() => setIsInterviewModalOpen(true)}
-              >
-                <Play className="mr-2 h-4 w-4" />
-                Start Interview
-              </Button>
+              <div className="mt-4 space-y-2">
+                <Button 
+                  className="w-full bg-purple-100 hover:bg-purple-200 text-purple-700 border border-purple-300"
+                  onClick={() => setIsHistoryModalOpen(true)}
+                >
+                  <Clock className="mr-2 h-4 w-4" />
+                  View Previous Interviews
+                </Button>
+                <Button 
+                  className="w-full bg-purple-500 hover:bg-purple-600 text-white"
+                  onClick={() => setIsInterviewModalOpen(true)}
+                >
+                  <Play className="mr-2 h-4 w-4" />
+                  Start Interview
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -1522,14 +1531,6 @@ export default function Component() {
                 <div className="space-y-6">
                   <div className="flex justify-between items-center">
                     <h3 className="text-lg font-medium text-purple-800">Let's set up your interview practice</h3>
-                    <Button
-                      variant="outline"
-                      className="border-purple-500 text-purple-700 hover:bg-purple-50"
-                      onClick={() => setIsHistoryModalOpen(true)}
-                    >
-                      <Clock className="mr-2 h-4 w-4" />
-                      View Previous Interviews
-                    </Button>
                   </div>
                   
                   {interviewData.error && (
@@ -1733,7 +1734,7 @@ export default function Component() {
                       <div className="flex flex-col items-center mb-4">
                         <video 
                           id="media-check-preview" 
-                          className="w-full max-w-md h-60 bg-gray-100 rounded mb-2 object-cover"
+                          className="w-full max-w-md h-60 bg-gray-100 rounded mb-2 object-cover transform -scale-x-100"
                           muted
                           playsInline
                         ></video>

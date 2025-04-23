@@ -78,7 +78,7 @@ const VideoRecorder: React.FC<VideoRecorderProps> = ({
       stopCamera();
       
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: true,
+        video: { facingMode: 'user' },
         audio: false
       });
       
@@ -170,7 +170,7 @@ const VideoRecorder: React.FC<VideoRecorderProps> = ({
         <div className="video-preview w-full">
           <video
             ref={videoPreviewRef}
-            className="w-full h-auto rounded-lg border border-gray-300"
+            className="w-full h-auto rounded-lg border border-gray-300 transform -scale-x-100"
             width="100%"
             height="auto"
             autoPlay
