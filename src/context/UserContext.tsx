@@ -1,5 +1,6 @@
 //@ts-nocheck
 import React, { createContext, useState, useEffect, useCallback, useMemo, ReactNode, useRef } from "react";
+import { apiFetch } from "../utils/api";
 
 // Configuration constants
 const MIN_LOADER_DISPLAY_TIME_MS = 1;
@@ -210,15 +211,11 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
       
-      const response = await fetch("http://localhost:5000/profile", {
+      const response = await apiFetch("profile", {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch profile");
-      }
 
       const data = await response.json();
       setUserData(data);

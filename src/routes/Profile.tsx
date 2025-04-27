@@ -28,6 +28,7 @@ import {
   ResponsiveContainer 
 } from "recharts";
 import { useUser } from "@/context/UserContext";
+import { apiFetch } from "../utils/api";
 
 interface SubjectMarks {
   _id?: string;
@@ -62,6 +63,19 @@ export default function ProfilePage() {
   const [profilePhoto, setProfilePhoto] = useState("/placeholder-user.jpg");
   const [classResults, setClassResults] = useState<ClassResults | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [token, setToken] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [photoMessage, setPhotoMessage] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [markError, setMarkError] = useState("");
+  const [markMessage, setMarkMessage] = useState("");
+  const [submittingMark, setSubmittingMark] = useState(false);
+  const [editMarkError, setEditMarkError] = useState("");
+  const [editMarkMessage, setEditMarkMessage] = useState("");
+  const [editingSubject, setEditingSubject] = useState<SubjectMarks | null>(null);
+  const [editingMarkType, setEditingMarkType] = useState("");
+  const [editingMarkValue, setEditingMarkValue] = useState("");
+  const [rankData, setRankData] = useState({ rank: 0, average: 0 });
 
   // Calculate total marks for each subject
   const calculateTotalMarks = (mark: SubjectMarks) => {
@@ -90,88 +104,198 @@ export default function ProfilePage() {
 
   // Fetch subject marks and class results
   useEffect(() => {
-    const fetchSubjectMarksAndResults = async () => {
+    // Function to fetch user data
+    const fetchUserData = async () => {
+      setIsLoading(true);
       try {
-        // Get the token from local storage
-        const token = localStorage.getItem("token");
-        if (!token || !userData) {
-          return;
-        }
-
-        // Initialize form data from user data if available
-        if (userData) {
-          setFormData({
-            subject: "",
-            cia1: 0,
-            cia2: 0,
-            midSem: 0,
-            endSem: 0,
-          });
-
-          if (userData.photoUrl) {
-            setProfilePhoto(userData.photoUrl);
-          }
-        }
-
-        // Fetch subject marks for the current user
-        const subjectMarksResponse = await fetch("http://localhost:5000/api/user/stats/subject", {
+        // Fetch academic marks data
+        const subjectMarksResponse = await apiFetch("api/user/stats/subject", {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         });
 
         if (subjectMarksResponse.ok) {
-          const marks = await subjectMarksResponse.json();
-          setSubjectMarks(marks);
-        } else {
-          console.error("Error fetching subject marks");
+          const marksData = await subjectMarksResponse.json();
+          setSubjectMarks(marksData);
         }
 
-        // Fetch class results from endpoint
-        const classResultsResponse = await fetch("http://localhost:5000/api/classResults", {
-          headers: { Authorization: `Bearer ${token}` },
+        // Fetch class results
+        const classResultsResponse = await apiFetch("api/classResults", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         });
 
         if (classResultsResponse.ok) {
-          const results = await classResultsResponse.json();
-          setClassResults(results);
-        } else {
-          console.error("Error fetching class results");
+          const classData = await classResultsResponse.json();
+          // Calculate user's rank if available
+          if (userData && classData && classData.results) {
+            const userRollno = userData.rollno;
+            let rank = 0;
+            classData.results.forEach((result: any, index: number) => {
+              if (result._id === userRollno) {
+                rank = index + 1;
+              }
+            });
+            setRankData({ rank, average: classData.classAverageResult });
+          }
         }
       } catch (error) {
-        console.error("Error fetching data:", error);
+        console.error("Error fetching user data:", error);
+      } finally {
+        setIsLoading(false);
       }
     };
 
-    fetchSubjectMarksAndResults();
-  }, [userData]);
+    if (userData) {
+      fetchUserData();
+    }
+  }, [userData, token]);
+
+  // Handle profile photo upload
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0]) return;
+
+    const formData = new FormData();
+    formData.append("photo", e.target.files[0]);
+
+    try {
+      setUploading(true);
+      const response = await apiFetch("api/profile/photo", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (response.ok) {
+        // Refresh user data to get updated photo URL
+        refreshUserData();
+        setPhotoMessage("Photo updated successfully");
+      } else {
+        setPhotoMessage("Failed to update photo");
+      }
+    } catch (error) {
+      console.error("Error uploading photo:", error);
+      setPhotoMessage("Error uploading photo");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Handle mark entry
+  const handleAddMark = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!selectedSubject || !markType || !markValue) {
+      setMarkError("Please fill all fields");
+      return;
+    }
+
+    try {
+      setSubmittingMark(true);
+      const response = await apiFetch("api/user/stats/subject", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          subjectName: selectedSubject.subjectName,
+          subjectCode: selectedSubject.subjectCode,
+          [markType]: parseInt(markValue),
+        }),
+      });
+
+      if (response.ok) {
+        setMarkMessage("Mark added successfully");
+        setSubjectMarks([...subjectMarks, await response.json()]);
+        setSelectedSubject(null);
+        setMarkType("");
+        setMarkValue("");
+      } else {
+        setMarkError("Failed to add mark");
+      }
+    } catch (error) {
+      console.error("Error adding mark:", error);
+      setMarkError("Error adding mark");
+    } finally {
+      setSubmittingMark(false);
+    }
+  };
+
+  // Handle mark update
+  const handleUpdateMark = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!editingSubject || !editingMarkType || !editingMarkValue) {
+      setEditMarkError("Please fill all fields");
+      return;
+    }
+
+    try {
+      setSubmittingEditMark(true);
+      const response = await apiFetch(`api/user/stats/subject/${editingSubject._id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          [editingMarkType]: parseInt(editingMarkValue),
+        }),
+      });
+
+      if (response.ok) {
+        const updatedMark = await response.json();
+        setSubjectMarks(
+          subjectMarks.map((mark) =>
+            mark._id === updatedMark._id ? updatedMark : mark
+          )
+        );
+        setEditMarkMessage("Mark updated successfully");
+        setIsEditModalOpen(false);
+        setEditingSubject(null);
+        setEditingMarkType("");
+        setEditingMarkValue("");
+      } else {
+        setEditMarkError("Failed to update mark");
+      }
+    } catch (error) {
+      console.error("Error updating mark:", error);
+      setEditMarkError("Error updating mark");
+    } finally {
+      setSubmittingEditMark(false);
+    }
+  };
+
+  // Handle mark deletion
+  const handleDeleteMark = async (id: string) => {
+    try {
+      const response = await apiFetch(`api/user/stats/subject/${id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        setSubjectMarks(subjectMarks.filter((mark) => mark._id !== id));
+        setMarkMessage("Mark deleted successfully");
+      } else {
+        setMarkError("Failed to delete mark");
+      }
+    } catch (error) {
+      console.error("Error deleting mark:", error);
+      setMarkError("Error deleting mark");
+    }
+  };
 
   // Trigger file input click when edit icon is clicked
   const handleEditPhotoClick = () => {
     fileInputRef.current?.click();
-  };
-
-  // Handle file change and upload photo
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-
-    const file = e.target.files[0];
-    const photoData = new FormData();
-    photoData.append("photo", file);
-
-    fetch("http://localhost:5000/api/profile/photo", {
-      method: "POST",
-      headers: { Authorization: "Bearer " + localStorage.getItem("token") },
-      body: photoData,
-    })
-      .then((response) => response.json())
-      .then((data) => {
-        if (data.photoUrl) {
-          setProfilePhoto(data.photoUrl);
-          refreshUserData();
-        }
-      })
-      .catch((error) => console.error("Error uploading photo:", error));
   };
 
   const handleViewAnalysisClick = () => {
@@ -213,68 +337,6 @@ export default function ProfilePage() {
       if (num > 50) num = 50;
     }
     setFormData({ ...formData, [name]: name === "subject" ? value : num });
-  };
-
-  const handleAddMark = () => {
-    const exists = subjectMarks.some(
-      (mark) =>
-        mark.subject.toLowerCase() === formData.subject.toLowerCase() &&
-        formData.subject !== ""
-    );
-    if (exists) {
-      alert("This subject already exists. Please edit the existing record.");
-      return;
-    }
-    fetch("http://localhost:5000/api/user/stats/subject", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + localStorage.getItem("token") },
-      body: JSON.stringify(formData),
-    })
-      .then((res) => res.json())
-      .then((newMark) => {
-        setSubjectMarks([...subjectMarks, newMark]);
-        setFormData({ subject: "", cia1: 0, cia2: 0, midSem: 0, endSem: 0 });
-        
-        // Refresh user data to show updated wisdom points
-        refreshUserData();
-      })
-      .catch((err) => console.error("Error adding mark:", err));
-  };
-
-  const handleUpdateMark = () => {
-    if (!selectedSubject || !selectedSubject._id) return;
-    fetch(`http://localhost:5000/api/user/stats/subject/${selectedSubject._id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + localStorage.getItem("token") },
-      body: JSON.stringify(formData),
-    })
-      .then((res) => res.json())
-      .then((updatedMark) => {
-        setSubjectMarks(
-          subjectMarks.map((mark) => (mark._id === updatedMark._id ? updatedMark : mark))
-        );
-        setSelectedSubject(null);
-        setFormData({ subject: "", cia1: 0, cia2: 0, midSem: 0, endSem: 0 });
-        
-        // Refresh user data to show updated wisdom points
-        refreshUserData();
-      })
-      .catch((err) => console.error("Error updating mark:", err));
-  };
-
-  const handleDeleteMark = (id: string) => {
-    fetch(`http://localhost:5000/api/user/stats/subject/${id}`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + localStorage.getItem("token") },
-    })
-      .then((res) => res.json())
-      .then(() => {
-        setSubjectMarks(subjectMarks.filter((mark) => mark._id !== id));
-        
-        // Refresh user data to show updated wisdom points
-        refreshUserData();
-      })
-      .catch((err) => console.error("Error deleting mark:", err));
   };
 
   return (

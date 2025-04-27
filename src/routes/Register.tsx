@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BookOpen } from "lucide-react";
 import { Link } from "react-router-dom";
+import { apiFetch } from "../utils/api";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -30,44 +31,34 @@ export default function Register() {
   const [retypePassword, setRetypePassword] = useState("");
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
 
-  const handleRegister = async () => {
-    // Check if any field is empty
-    if (
-      !name ||
-      !rollno ||
-      !branch ||
-      !sem ||
-      !dateOfBirth ||
-      !phone ||
-      !email ||
-      !password ||
-      !retypePassword
-    ) {
-      setError("Please fill all fields.");
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    
+    // Form validation
+    if (!name || !email || !rollno || !password) {
+      setError("All fields are required");
+      setIsSubmitting(false);
       return;
     }
-
+    
     if (password !== retypePassword) {
-      setError("Passwords do not match.");
+      setError("Passwords do not match");
+      setIsSubmitting(false);
       return;
     }
 
     try {
-      const response = await fetch("http://localhost:5000/register", {
+      // Call registration API endpoint
+      const response = await apiFetch("register", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          rollno,
-          branch,
-          sem: Number(sem),
-          dateOfBirth,
-          phone,
-          email,
-          password,
-        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name, email, rollno, password }),
       });
 
       const data = await response.json();
@@ -80,12 +71,14 @@ export default function Register() {
     } catch (error) {
       console.error("Error:", error);
       setError("Something went wrong.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleKeyPress = (e: { key: string }) => {
     if (e.key === "Enter") {
-      handleRegister();
+      handleSubmit(e);
     }
   };
 
@@ -258,7 +251,8 @@ export default function Register() {
           <CardFooter className="flex flex-col space-y-4">
             <Button
               className="w-full bg-purple-600 hover:bg-purple-700 text-white"
-              onClick={handleRegister}
+              onClick={handleSubmit}
+              disabled={isSubmitting}
             >
               Sign Up
             </Button>

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
+import { apiFetch } from "../utils/api";
 
 // Define interfaces for our types
 interface Question {
@@ -127,7 +128,7 @@ export default function QuizInterface() {
   // Fetch user profile similar to Home.tsx so that we have the correct identifier
   useEffect(() => {
     if (token) {
-      fetch("http://localhost:5000/profile", {
+      apiFetch("profile", {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -201,7 +202,7 @@ export default function QuizInterface() {
   }, [attemptingQuiz, isTimerRunning, tabChangeCount]);
 
   const fetchQuizzes = () => {
-    fetch("http://localhost:5000/api/quizzes", {
+    apiFetch("api/quizzes", {
       headers: {
         Authorization: `Bearer ${token}`
       }
@@ -215,7 +216,7 @@ export default function QuizInterface() {
     if (!userData || !userData.rollno) return;
     
     // Use the user's roll number instead of a hardcoded value
-    fetch(`http://localhost:5000/api/quizAttempts?user=${userData.rollno}`, {
+    apiFetch(`api/quizAttempts?user=${userData.rollno}`, {
       headers: {
         Authorization: `Bearer ${token}`
       }
@@ -251,7 +252,7 @@ export default function QuizInterface() {
     }) || [];
   
     if (userData && selectedQuiz) {
-      fetch(`http://localhost:5000/api/quizzes/${selectedQuiz._id}/attempt`, {
+      apiFetch(`api/quizzes/${selectedQuiz._id}/attempt`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -395,7 +396,7 @@ export default function QuizInterface() {
       answer: userAnswers[index] || "", // Use empty string for unanswered questions
     }));
   
-    fetch(`http://localhost:5000/api/quizzes/${selectedQuiz._id}/attempt`, {
+    apiFetch(`api/quizzes/${selectedQuiz._id}/attempt`, {
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
@@ -467,7 +468,7 @@ export default function QuizInterface() {
     }
     
     const quizToSubmit = { ...newQuiz, questions: processedQuestions };
-    fetch("http://localhost:5000/api/quizzes", {
+    apiFetch("api/quizzes", {
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
@@ -496,7 +497,7 @@ export default function QuizInterface() {
       "Delete Quiz",
       "Are you sure you want to delete this quiz? This action cannot be undone.",
       () => {
-        fetch(`http://localhost:5000/api/quizzes/${quizId}`, {
+        apiFetch(`api/quizzes/${quizId}`, {
           method: "DELETE",
           headers: {
             Authorization: `Bearer ${token}`
@@ -527,7 +528,7 @@ export default function QuizInterface() {
       "Clear Attempt",
       "Are you sure you want to clear this attempt? This will allow you to take the quiz again.",
       () => {
-        fetch(`http://localhost:5000/api/quizAttempts/${attemptId}`, {
+        apiFetch(`api/quizAttempts/${attemptId}`, {
           method: "DELETE",
           headers: {
             Authorization: `Bearer ${token}`
@@ -972,7 +973,7 @@ export default function QuizInterface() {
                 "Clear All Attempts",
                 "Are you sure you want to clear all clearable attempts? This cannot be undone.",
                 () => {
-                  fetch(`http://localhost:5000/api/quizAttempts/clearAll?user=${userData.rollno}`, { 
+                  apiFetch(`api/quizAttempts/clearAll?user=${userData.rollno}`, {
                     method: "DELETE",
                     headers: {
                       Authorization: `Bearer ${token}`

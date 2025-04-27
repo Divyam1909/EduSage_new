@@ -29,6 +29,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import AILoader from "@/components/AILoader";
 import { useToast } from "@/components/ToastContainer";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { apiClient } from "../utils/api";
 
 interface Event {
   id?: string;
@@ -104,8 +105,8 @@ export default function CalendarComponent() {
   }, []);
 
   const refreshEvents = () => {
-    axios
-      .get("http://localhost:5000/api/events")
+    apiClient
+      .get("/api/events")
       .then((response) => {
         const transformed = response.data.map((ev: any) => ({
           ...ev,
@@ -142,8 +143,8 @@ export default function CalendarComponent() {
           atTime: newEvent.time ? newEvent.notifications.atTime : false
         }
       };
-      const response = await axios.post(
-        "http://localhost:5000/api/events",
+      const response = await apiClient.post(
+        "/api/events",
         eventToAdd
       );
       const addedEvent = { ...response.data, id: response.data._id };
@@ -191,8 +192,8 @@ export default function CalendarComponent() {
           atTime: newEvent.time ? newEvent.notifications.atTime : false
         }
       };
-      const response = await axios.put(
-        `http://localhost:5000/api/events/${selectedEvent.id}`,
+      const response = await apiClient.put(
+        `/api/events/${selectedEvent.id}`,
         eventToUpdate
       );
       const updatedEvent = { ...response.data, id: response.data._id };
@@ -224,8 +225,8 @@ export default function CalendarComponent() {
     if (!selectedEvent) return;
     
     try {
-      await axios.delete(
-        `http://localhost:5000/api/events/${selectedEvent.id}`
+      await apiClient.delete(
+        `/api/events/${selectedEvent.id}`
       );
       setEvents((prevEvents) =>
         prevEvents.filter((ev) => ev.id !== selectedEvent.id)
@@ -257,7 +258,7 @@ export default function CalendarComponent() {
   const handleDeletePdfEvents = async () => {    
     setDeletingPdfEvents(true);
     try {
-      const response = await axios.delete('http://localhost:5000/api/calendar/pdf-events');
+      const response = await apiClient.delete('/api/calendar/pdf-events');
       
       // Check for count first, then deletedCount, then fall back to a generic message
       if (response.data.count !== undefined) {
@@ -299,8 +300,8 @@ export default function CalendarComponent() {
       }, 1000);
       
       // Let axios automatically set the Content-Type
-      const response = await axios.post(
-        "http://localhost:5000/api/calendar/upload",
+      const response = await apiClient.post(
+        "/api/calendar/upload-pdf",
         formData
       );
       

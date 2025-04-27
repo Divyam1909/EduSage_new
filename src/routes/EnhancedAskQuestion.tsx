@@ -22,6 +22,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useUser } from "@/context/UserContext";
+import { apiFetch } from "../utils/api";
 
 // Sample previous questions for demonstrating similar question detection
 const previousQuestions = [
@@ -99,7 +100,7 @@ export default function EnhancedAskQuestion() {
     }
 
     try {
-      const res = await fetch("http://localhost:5000/api/questions", {
+      const res = await apiFetch("api/questions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

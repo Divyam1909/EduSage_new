@@ -1,9 +1,9 @@
 //@ts-nocheck
-import { useState, useEffect, useCallback, useMemo } from "react";
-import axios from "axios";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { apiClient } from "../utils/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
   Dialog,
   DialogContent,
@@ -28,20 +28,6 @@ import {
 } from "lucide-react";
 import { formatDate, getInitials, LEVELS, calculateLevel } from "@/lib/utils";
 import { useUser } from "@/context/UserContext";
-
-// API client with base URL configuration
-const apiClient = axios.create({
-  baseURL: 'http://localhost:5000',
-});
-
-// Add request interceptor to include token in all requests
-apiClient.interceptors.request.use(config => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
 
 export default function Home() {
   const { userData, isLoading, refreshUserData } = useUser();

@@ -42,6 +42,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useUser } from "@/context/UserContext";
+import { apiFetch } from "../utils/api";
 
 const formatDate = (date: Date) =>
   new Intl.DateTimeFormat("en-US", {
@@ -105,7 +106,7 @@ export default function Solutions() {
     if (!token) return null;
     
     try {
-      const res = await fetch("http://localhost:5000/profile", {
+      const res = await apiFetch("profile", {
         headers: { "Authorization": `Bearer ${token}` }
       });
       const data = await res.json();
@@ -127,7 +128,7 @@ export default function Solutions() {
     if (!id) return;
     
     try {
-      const res = await fetch(`http://localhost:5000/api/questions/${id}`);
+      const res = await apiFetch(`api/questions/${id}`);
       if (res.ok) {
         const data = await res.json();
         setQuestion(data);
@@ -144,7 +145,7 @@ export default function Solutions() {
     if (!id) return;
     
     try {
-      const res = await fetch(`http://localhost:5000/api/questions/${id}/answers`);
+      const res = await apiFetch(`api/questions/${id}/answers`);
       if (res.ok) {
         const data = await res.json();
         setAnswers(data);
@@ -193,7 +194,7 @@ export default function Solutions() {
     }
     
     try {
-      const res = await fetch(`http://localhost:5000/api/questions/${id}/answers`, {
+      const res = await apiFetch(`api/questions/${id}/answers`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -232,7 +233,7 @@ export default function Solutions() {
     }
     
     try {
-      const res = await fetch(`http://localhost:5000/api/answers/${answerId}`, {
+      const res = await apiFetch(`api/answers/${answerId}`, {
         method: "PUT",
         headers: { 
           "Content-Type": "application/json",
@@ -268,7 +269,7 @@ export default function Solutions() {
     }
     
     try {
-      const res = await fetch(`http://localhost:5000/api/answers/${answerId}`, {
+      const res = await apiFetch(`api/answers/${answerId}`, {
         method: "DELETE",
         headers: { "Authorization": `Bearer ${token}` }
       });
@@ -301,7 +302,7 @@ export default function Solutions() {
     }
     
     try {
-      const res = await fetch(`http://localhost:5000/api/questions/${id}`, {
+      const res = await apiFetch(`api/questions/${id}`, {
         method: "DELETE",
         headers: { "Authorization": `Bearer ${token}` }
       });
@@ -330,7 +331,7 @@ export default function Solutions() {
     }
     
     try {
-      const res = await fetch(`http://localhost:5000/api/questions/${id}/approve/${answerId}`, {
+      const res = await apiFetch(`api/questions/${id}/approve/${answerId}`, {
         method: "PUT",
         headers: { "Authorization": `Bearer ${token}` }
       });

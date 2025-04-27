@@ -1,6 +1,7 @@
 //@ts-nocheck
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
+import { apiClient } from "../utils/api";
 import {
   GraduationCap,
   FileText,
@@ -49,8 +50,8 @@ export default function Resources() {
 
   // Fetch resources from the backend on component mount
   useEffect(() => {
-    axios
-      .get("http://localhost:5000/api/resources")
+    apiClient
+      .get("/api/resources")
       .then((response) => setResources(response.data))
       .catch((error) => console.error("Error fetching resources:", error));
   }, []);
@@ -72,12 +73,12 @@ export default function Resources() {
     try {
       if (editingResource) {
         // Update existing resource
-        const response = await axios.put(`http://localhost:5000/api/resources/${editingResource._id}`, newResource);
+        const response = await apiClient.put(`/api/resources/${editingResource._id}`, newResource);
         setResources(resources.map((res) => (res._id === editingResource._id ? response.data : res)));
         setEditingResource(null);
       } else {
         // Add new resource
-        const response = await axios.post("http://localhost:5000/api/resources", newResource);
+        const response = await apiClient.post("/api/resources", newResource);
         setResources([...resources, response.data]);
       }
 
@@ -100,7 +101,7 @@ export default function Resources() {
     if (!resourceToDelete) return;
   
     try {
-      await axios.delete(`http://localhost:5000/api/resources/${resourceToDelete._id}`);
+      await apiClient.delete(`/api/resources/${resourceToDelete._id}`);
       setResources(resources.filter((res) => res._id !== resourceToDelete._id));
       setShowDeleteModal(false);
       setResourceToDelete(null);
@@ -128,7 +129,7 @@ export default function Resources() {
     if (!id) return;
     
     try {
-      const response = await axios.put(`http://localhost:5000/api/resources/${id}/bookmark`);
+      const response = await apiClient.put(`/api/resources/${id}/bookmark`);
       setResources(resources.map((res) => (res._id === id ? response.data : res)));
     } catch (error) {
       console.error("Error bookmarking resource:", error);

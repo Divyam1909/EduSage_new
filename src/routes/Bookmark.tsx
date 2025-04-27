@@ -1,8 +1,8 @@
 //@ts-nocheck
 "use client";
 
-import { useState, useEffect } from "react";
-import axios from "axios";
+import React, { useState, useEffect } from "react";
+import { apiClient } from "../utils/api";
 import { 
   Bookmark, 
   Trash2, 
@@ -32,8 +32,8 @@ export default function Bookmarks() {
 
   // Fetch bookmarked resources from the backend when component mounts
   useEffect(() => {
-    axios
-      .get("http://localhost:5000/api/resources/bookmarked")
+    apiClient
+      .get("/api/resources/bookmarked")
       .then((response) => setBookmarks(response.data))
       .catch((error) => console.error("Error fetching bookmarks:", error));
   }, []);
@@ -41,7 +41,7 @@ export default function Bookmarks() {
   // Handle deleting a bookmark (toggling bookmark status off)
   const handleDeleteBookmark = async (id: string) => {
     try {
-      await axios.put(`http://localhost:5000/api/resources/${id}/bookmark`); // Toggle bookmark off
+      await apiClient.put(`/api/resources/${id}/bookmark`); // Toggle bookmark off
       setBookmarks(bookmarks.filter((bookmark) => bookmark._id !== id));
     } catch (error) {
       console.error("Error removing bookmark:", error);

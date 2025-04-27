@@ -13,51 +13,54 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BookOpen, KeyRound } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import { apiFetch } from "../utils/api";
 // import Custombutton from "@/components/cu  stombutton";
 
 // Student login component for authentication
 export default function Login() {
   const navigate = useNavigate();
   
-  // State variables for form inputs
+  // State for form fields and error messages
   const [rollno, setRollno] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
   // Handle login authentication
-  const handleClick = async () => {
-    // Form validation
-    if (rollno === "" || password === "") {
-      alert("Please enter roll number and password");
-      return;
-    }
-  
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setError("");
+
     try {
       // Call authentication API endpoint
-      const response = await fetch("http://localhost:5000/login", {
+      const response = await apiFetch("login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rollno, password }),
       });
-  
-      const data = await response.json();
-  
+
+      // Handle successful login
       if (response.ok) {
-        // Store auth token and redirect on successful login
+        const data = await response.json();
         localStorage.setItem("token", data.token);
         navigate("/home");
       } else {
-        alert(data.message);
+        const errorData = await response.json();
+        setError(errorData.message || "Invalid credentials");
       }
     } catch (error) {
-      alert("Server error");
+      setError("Server error occurred. Please try again later.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
   
   // Handle Enter key press to trigger login
   const handleKeyPress = (e: { key: string; }) => {
     if (e.key === "Enter") {
-      handleClick();
+      handleLogin(e);
     }
   };
 
@@ -141,7 +144,7 @@ export default function Login() {
           <CardFooter className="flex flex-col space-y-4">
             <Button
               className="w-full bg-purple-600 hover:bg-purple-700 text-white"
-              onClick={handleClick}
+              onClick={handleLogin}
             >
               {/* <Custombutton/> */}
               Log in
