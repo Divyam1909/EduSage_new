@@ -102,6 +102,14 @@ export default function ProfilePage() {
     ? classResults.totalStudents - currentUserRank
     : 0;
 
+  // Initialize token from localStorage
+  useEffect(() => {
+    const storedToken = localStorage.getItem("token");
+    if (storedToken) {
+      setToken(storedToken);
+    }
+  }, []);
+
   // Fetch subject marks and class results
   useEffect(() => {
     // Function to fetch user data
@@ -153,6 +161,15 @@ export default function ProfilePage() {
     }
   }, [userData, token]);
 
+  // Update profile photo when userData changes
+  useEffect(() => {
+    if (userData && userData.photoUrl) {
+      setProfilePhoto(userData.photoUrl);
+    } else {
+      setProfilePhoto("/placeholder-user.jpg");
+    }
+  }, [userData]);
+
   // Handle profile photo upload
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || !e.target.files[0]) return;
@@ -189,8 +206,8 @@ export default function ProfilePage() {
   const handleAddMark = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!selectedSubject || !markType || !markValue) {
-      setMarkError("Please fill all fields");
+    if (!formData.subject) {
+      setMarkError("Please select a subject");
       return;
     }
 
@@ -203,9 +220,11 @@ export default function ProfilePage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          subjectName: selectedSubject.subjectName,
-          subjectCode: selectedSubject.subjectCode,
-          [markType]: parseInt(markValue),
+          subject: formData.subject,
+          cia1: formData.cia1,
+          cia2: formData.cia2,
+          midSem: formData.midSem,
+          endSem: formData.endSem
         }),
       });
 
@@ -213,8 +232,7 @@ export default function ProfilePage() {
         setMarkMessage("Mark added successfully");
         setSubjectMarks([...subjectMarks, await response.json()]);
         setSelectedSubject(null);
-        setMarkType("");
-        setMarkValue("");
+        setFormData({ subject: "", cia1: 0, cia2: 0, midSem: 0, endSem: 0 });
       } else {
         setMarkError("Failed to add mark");
       }
@@ -230,21 +248,24 @@ export default function ProfilePage() {
   const handleUpdateMark = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!editingSubject || !editingMarkType || !editingMarkValue) {
+    if (!formData.subject || !selectedSubject) {
       setEditMarkError("Please fill all fields");
       return;
     }
 
     try {
-      setSubmittingEditMark(true);
-      const response = await apiFetch(`api/user/stats/subject/${editingSubject._id}`, {
+      const response = await apiFetch(`api/user/stats/subject/${selectedSubject._id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          [editingMarkType]: parseInt(editingMarkValue),
+          subject: formData.subject,
+          cia1: formData.cia1,
+          cia2: formData.cia2,
+          midSem: formData.midSem,
+          endSem: formData.endSem
         }),
       });
 
@@ -266,8 +287,6 @@ export default function ProfilePage() {
     } catch (error) {
       console.error("Error updating mark:", error);
       setEditMarkError("Error updating mark");
-    } finally {
-      setSubmittingEditMark(false);
     }
   };
 

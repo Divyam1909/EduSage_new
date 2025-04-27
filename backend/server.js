@@ -754,7 +754,9 @@ app.post("/api/profile/photo", authenticateToken, uploadHandler.single("photo"),
     // Use the same hostname from the request or fall back to environment variable/default
     const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
     const host = process.env.BACKEND_URL || req.get('host') || `localhost:${process.env.PORT || 5000}`;
-    const photoUrl = `${protocol}://${host}/uploads/${filename}`;
+    const photoUrl = process.env.NODE_ENV === 'production' 
+      ? `${process.env.BACKEND_URL}/uploads/${filename}`
+      : `${protocol}://${host}/uploads/${filename}`;
     
     await User.findOneAndUpdate({ rollno: req.user.rollno }, { photoUrl }, { new: true });
     res.json({ photoUrl });

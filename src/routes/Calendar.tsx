@@ -301,7 +301,7 @@ export default function CalendarComponent() {
       
       // Let axios automatically set the Content-Type
       const response = await apiClient.post(
-        "/api/calendar/upload-pdf",
+        "/api/calendar/upload",
         formData
       );
       
