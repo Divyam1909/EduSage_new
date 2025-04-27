@@ -85,43 +85,58 @@ function parseJsonResponse(text) {
 async function processTextWithGemini(pdfText) {
   try {
     const prompt = `
-    You are an academic calendar parsing expert specializing in extracting structured event data from PDF documents.
+    You are an academic calendar parsing expert specializing in extracting structured event data from PDF documents with 100% accuracy.
     
     Here is the content from an academic calendar PDF (may be incomplete or have formatting issues):
     
     ${pdfText.substring(0, 35000)} 
     
-    I need you to carefully extract ALL academic events from this text, with special attention to:
+    Your task is to carefully analyze this text in a structured, multi-step approach:
     
-    1. Ensuring no events are missed (completeness is critical)
-    2. Keeping titles concise but descriptive
-    3. Capturing all relevant information in the details field
+    STEP 1: IDENTIFY POTENTIAL EVENTS
+    - First, identify ALL potential events that appear in the text, marking their approximate location
+    - Pay special attention to structured tables, lists, and sectioned content that may contain calendar events
+    - Make note of any recurring patterns in how events are formatted in this specific document
     
-    For each event, extract:
-    1. TITLE: A short, clear title (MAX 25 CHARACTERS) that identifies the event type
-    2. DATE: The event date in YYYY-MM-DD format
-    3. DETAILS: All additional information about the event including full descriptions, locations, etc.
+    STEP 2: EXTRACT KEY INFORMATION
+    For each identified event, meticulously extract:
+    1. TITLE: A short, precise title (MAX 25 CHARACTERS) that clearly identifies the event type
+    2. DATE: The exact event date in YYYY-MM-DD format (perform careful date validation)
+    3. DETAILS: ALL additional information about the event (descriptions, locations, times, etc.)
     
-    Focus on academic calendar events such as:
-    - Registration periods
-    - Exams/assessments/tests
-    - Semester start/end dates
+    STEP 3: VALIDATION & REFINEMENT
+    - Cross-check dates against contextual information to ensure they are valid academic calendar dates
+    - Verify that no duplicate events exist (same title and date)
+    - Ensure consistent categorization of similar events using standard prefixes
+    - Check that all dates follow ISO format (YYYY-MM-DD) and are properly parsed
+    - Confirm no relevant events have been missed by reviewing the text again
+    
+    CRITICAL EVENT TYPES TO IDENTIFY:
+    - Registration periods (course registration, exam registration)
+    - Exams/assessments/tests (finals, midterms, quizzes)
+    - Semester/term start and end dates
     - Holidays/breaks/vacations
     - Special lectures/workshops/seminars
-    - Submission deadlines
-    - Orientation days
-    - Results announcements
-    - Admission processes
-    - Faculty meetings
-    - Cultural/technical events
+    - Submission deadlines (assignments, thesis, projects)
+    - Orientation days (freshman, department, faculty)
+    - Results announcements and grade publications
+    - Admission processes and deadlines
+    - Faculty meetings and academic council sessions
+    - Cultural/technical events and festivals
     
-    IMPORTANT FORMATTING REQUIREMENTS:
-    - Titles MUST be very short (maximum 25 characters) but clearly identify the event type
-    - Move all detailed descriptions to the "details" field
-    - For events with long names, create a descriptive short title and put the full name in the details
-    - For date ranges like "Aug 05-10, 2024", create an event for the start date (2024-08-05) and note the full range in details
-    - If a specific time is mentioned for an event, include it in the details field
-    - Categorize similar events with consistent title prefixes (e.g., "Exam: Midterm", "Deadline: Project")
+    SPECIAL DATE HANDLING INSTRUCTIONS:
+    - For date ranges like "Aug 05-10, 2024", create separate events for start and end dates
+    - For recurring events, create individual entries for each occurrence
+    - For seasons (Fall, Spring, etc.), use the first day of the corresponding month
+    - If only a month is specified without a day, use the 1st of the month
+    - Always confirm the date is valid within academic year context
+    
+    FORMATTING REQUIREMENTS:
+    - Titles MUST be concise (maximum 25 characters) but clearly identify the event type
+    - Use consistent prefixes for similar events (e.g., "Exam:", "Deadline:", "Holiday:")
+    - Format all dates in strict ISO format: YYYY-MM-DD
+    - Include all contextual information in the details field, including full event names and times
+    - For tables or structured content, preserve the relationship between data points
     
     Return the results as a complete JSON array of ALL events you can find in the document, using this format:
     
@@ -134,16 +149,78 @@ async function processTextWithGemini(pdfText) {
       ...
     ]
     
+    Before finalizing your response, perform the following quality checks:
+    1. Are all events formatted correctly?
+    2. Are all dates valid and in ISO format?
+    3. Have you captured ALL possible events from the document?
+    4. Are all titles descriptive yet under the character limit?
+    5. Is the structure consistent across all event entries?
+    
     Return ONLY the JSON array with all the events, no additional text or markdown formatting.
     `;
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+    // Run the extraction twice, using results from first pass to improve second pass
+    const initialResult = await model.generateContent(prompt);
+    const initialResponse = await initialResult.response;
+    const initialText = initialResponse.text();
+    
+    let initialEvents = [];
+    try {
+      initialEvents = parseJsonResponse(initialText);
+    } catch (error) {
+      console.log("Error in first pass extraction, continuing with second pass");
+    }
+    
+    // Extract common patterns and potential missing events for second pass
+    const secondPassPrompt = `
+    You are an academic calendar parsing expert specializing in extracting structured event data from PDF documents with 100% accuracy.
+    
+    Here is the content from an academic calendar PDF (may be incomplete or have formatting issues):
+    
+    ${pdfText.substring(0, 35000)} 
+    
+    A first pass of event extraction has already been performed, identifying ${initialEvents.length} events.
+    
+    Your task is to perform a critical second-pass review to:
+    1. Identify ANY events missed in the first pass, particularly looking for:
+       - Events with unusual formatting
+       - Events mentioned in paragraph form rather than in tables
+       - Implicit events (like academic deadlines mentioned indirectly)
+       - Events with partial or ambiguous dates
+    
+    2. Validate and correct issues with existing events:
+       - Verify all dates are valid and in the correct format
+       - Ensure consistent event categorization
+       - Fix any title inconsistencies
+       - Cross-reference dates with contextual information
+    
+    Remember to follow these strict requirements:
+    - Titles must be MAX 25 characters
+    - Dates must be in YYYY-MM-DD format
+    - Include ALL relevant details in the details field
+    - Create separate events for date ranges (start date and end date)
+    
+    For any new or corrected events, include them in the comprehensive JSON array following this format:
+    
+    [
+      {
+        "title": "Very Short Title",
+        "date": "YYYY-MM-DD",
+        "details": "Full details and description of the event, including any specific times or additional information"
+      },
+      ...
+    ]
+    
+    Return ONLY the complete JSON array with ALL events, no additional text or markdown formatting.
+    `;
+    
+    const secondResult = await model.generateContent(secondPassPrompt);
+    const secondResponse = await secondResult.response;
+    const text = secondResponse.text();
     
     // Parse the JSON response
     const events = parseJsonResponse(text);
-    console.log(`Successfully extracted ${events.length} events using Gemini AI`);
+    console.log(`Successfully extracted ${events.length} events using Gemini AI (two-pass process)`);
     return events;
   } catch (error) {
     console.error("Error using Gemini API for event extraction:", error);
