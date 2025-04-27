@@ -1,13 +1,10 @@
 import axios from 'axios';
 
-// Determine if we're in production based on Vite's environment variable
-const isProduction = import.meta.env.PROD;
+// Get the backend URL from environment variables, trim any whitespace
+const backendUrl = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').trim();
 
-// In production, use the local proxy, otherwise use the direct backend URL
-// The proxy is configured in vite.config.ts to forward requests to the real backend
-export const BACKEND_URL = isProduction 
-  ? '/api' 
-  : (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').trim();
+// Use the full backend URL directly to avoid proxy issues
+export const BACKEND_URL = backendUrl;
 
 // Create an axios instance with the backend URL
 export const apiClient = axios.create({
@@ -25,6 +22,8 @@ export const apiUrl = (path: string) => `${BACKEND_URL}${path.startsWith('/') ? 
 export async function apiFetch(path: string, options: RequestInit = {}) {
   // Construct the complete URL to the backend
   const url = apiUrl(path);
+  
+  console.log("Making API request to:", url);
   
   // Use the complete URL, not relative to current domain
   const response = await fetch(url, {
