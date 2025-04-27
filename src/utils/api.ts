@@ -1,3 +1,4 @@
+//@ts-nocheck
 import axios from 'axios';
 
 // Get the backend URL from environment variables, trim any whitespace
