@@ -48,13 +48,19 @@ app.use(cors({
     if (!origin || allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
+      console.log('CORS blocked origin:', origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Origin'],
+  exposedHeaders: ['Content-Disposition', 'Content-Length'],
+  credentials: true,
+  maxAge: 86400 // 24 hours
 }));
+
+// Handle preflight OPTIONS requests
+app.options('*', cors());
 
 // Simple in-memory cache
 const cache = {
@@ -740,13 +746,23 @@ app.get("/profile", authenticateToken, async (req, res) => {
 /** ========== NEW ENDPOINT: Update Profile Photo ========== **/
 app.post("/api/profile/photo", authenticateToken, uploadHandler.single("photo"), async (req, res) => {
   try {
+    // First check if authentication was successful
+    if (!req.user || !req.user.rollno) {
+      return res.status(401).json({ message: "Unauthorized - invalid authentication" });
+    }
+    
+    // Then check if a file was received
     if (!req.file) {
       return res.status(400).json({ message: "No file uploaded" });
     }
+    
+    // Make sure the uploads directory exists
     const uploadPath = path.join(__dirname, "uploads");
     if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath);
+      fs.mkdirSync(uploadPath, { recursive: true });
     }
+    
+    // Create a unique filename and write the file
     const filename = Date.now() + "-" + req.file.originalname;
     const filePath = path.join(uploadPath, filename);
     fs.writeFileSync(filePath, req.file.buffer);
@@ -758,10 +774,20 @@ app.post("/api/profile/photo", authenticateToken, uploadHandler.single("photo"),
       ? `${process.env.BACKEND_URL}/uploads/${filename}`
       : `${protocol}://${host}/uploads/${filename}`;
     
-    await User.findOneAndUpdate({ rollno: req.user.rollno }, { photoUrl }, { new: true });
+    // Update the user's photo URL
+    const user = await User.findOneAndUpdate(
+      { rollno: req.user.rollno }, 
+      { photoUrl }, 
+      { new: true }
+    );
+    
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    
     res.json({ photoUrl });
   } catch (err) {
-    console.error(err);
+    console.error("Profile photo upload error:", err);
     res.status(500).json({ message: "Server error uploading photo" });
   }
 });

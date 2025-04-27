@@ -179,10 +179,21 @@ export default function ProfilePage() {
 
     try {
       setUploading(true);
+      
+      // Get the authentication token
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setPhotoMessage("Authentication error - please log in again");
+        return;
+      }
+      
       const response = await apiFetch("api/profile/photo", {
         method: "POST",
-        // Don't set headers for multipart/form-data
-        // Browser will set the appropriate boundary
+        // Add the Authorization header with token
+        headers: {
+          Authorization: `Bearer ${token}`
+        },
+        // Don't set Content-Type for FormData - the browser will set it automatically
         body: formData,
       });
 
@@ -191,11 +202,13 @@ export default function ProfilePage() {
         refreshUserData();
         setPhotoMessage("Photo updated successfully");
       } else {
-        setPhotoMessage("Failed to update photo");
+        const errorData = await response.text();
+        console.error("Photo upload error:", errorData);
+        setPhotoMessage(errorData || "Failed to update photo");
       }
     } catch (error) {
       console.error("Error uploading photo:", error);
-      setPhotoMessage("Error uploading photo");
+      setPhotoMessage(error instanceof Error ? error.message : "Error uploading photo");
     } finally {
       setUploading(false);
     }

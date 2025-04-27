@@ -39,14 +39,22 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
   console.log("Making API request to:", url);
   
   try {
+    // Create headers object
+    const headers = { ...options.headers };
+    
+    // For FormData requests, don't set Content-Type to let browser handle it
+    if (options.body instanceof FormData) {
+      delete headers['Content-Type'];
+    } else if (!headers['Content-Type']) {
+      // Default content type for non-FormData requests
+      headers['Content-Type'] = 'application/json';
+    }
+    
     // Use the complete URL, not relative to current domain
     const response = await fetch(url, {
       ...options,
       credentials: 'include', // Important for cookies/sessions
-      headers: {
-        ...options.headers,
-        'Content-Type': 'application/json',
-      },
+      headers
     });
     
     if (!response.ok) {
