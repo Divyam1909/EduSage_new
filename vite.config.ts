@@ -9,6 +9,18 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    hmr: {
+      overlay: false,
+    },
+    proxy: {
+      '/api': {
+        target: 'https://edusagenew-production-5fef.up.railway.app',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '')
+      }
+    }
+  },
   build: {
     // Reduce chunk size
     chunkSizeWarningLimit: 800,
@@ -35,11 +47,5 @@ export default defineConfig({
   // Enable dependency optimization
   optimizeDeps: {
     include: ['react', 'react-dom', 'react-router-dom', 'axios'],
-  },
-  // Cache and faster build
-  server: {
-    hmr: {
-      overlay: false,
-    },
   },
 });
