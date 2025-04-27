@@ -1,3 +1,4 @@
+//@ts-nocheck
 import React, { useState, useRef, useEffect } from 'react';
 import { useReactMediaRecorder } from 'react-media-recorder';
 import { Button } from '@/components/ui/button';

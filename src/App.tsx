@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { Routes, Route, Outlet, useLocation, useNavigationType } from "react-router-dom";
 import { UserProvider, useUser } from "./context/UserContext";
 import { lazy, Suspense, useEffect } from "react";

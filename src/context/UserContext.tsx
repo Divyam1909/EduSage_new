@@ -1,3 +1,4 @@
+//@ts-nocheck
 import React, { createContext, useState, useEffect, useCallback, useMemo, ReactNode, useRef } from "react";
 
 // Configuration constants

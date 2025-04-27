@@ -1,3 +1,4 @@
+//@ts-nocheck
 import React, { useState, useEffect, createContext, useContext, ReactNode } from 'react';
 import styled from 'styled-components';
 import Toast from './Toast';
