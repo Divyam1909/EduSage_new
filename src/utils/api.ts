@@ -19,6 +19,15 @@ export const apiClient = axios.create({
   withCredentials: true, // Important for cookies/sessions
 });
 
+// Add request interceptor to handle FormData requests properly
+apiClient.interceptors.request.use(config => {
+  if (config.data instanceof FormData) {
+    // For FormData, let the browser set the Content-Type with boundary
+    delete config.headers['Content-Type'];
+  }
+  return config;
+});
+
 // For fetch API usage - ensure we return a complete URL
 export const apiUrl = (path: string) => `${BACKEND_URL}${path.startsWith('/') ? path : `/${path}`}`;
 

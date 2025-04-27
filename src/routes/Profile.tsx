@@ -181,9 +181,8 @@ export default function ProfilePage() {
       setUploading(true);
       const response = await apiFetch("api/profile/photo", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        // Don't set headers for multipart/form-data
+        // Browser will set the appropriate boundary
         body: formData,
       });
 

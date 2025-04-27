@@ -299,7 +299,7 @@ export default function CalendarComponent() {
         setUploadProgress({ status: 'parsing', message: 'AI is analyzing your calendar...' });
       }, 1000);
       
-      // Let axios automatically set the Content-Type
+      // Remove explicit Content-Type header - let apiClient handle it
       const response = await apiClient.post(
         "/api/calendar/upload",
         formData
