@@ -1,9 +1,9 @@
 import axios from 'axios';
 
 // Get the backend URL from environment variables, trim any whitespace
-const backendUrl = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').trim();
+const backendUrl = 'https://edusagenew-production-5fef.up.railway.app';
 
-// Use the full backend URL directly to avoid proxy issues
+// Use the full backend URL directly
 export const BACKEND_URL = backendUrl;
 
 // Create an axios instance with the backend URL
