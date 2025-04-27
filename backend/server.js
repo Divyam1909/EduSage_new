@@ -38,7 +38,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // CORS setup with optimized settings
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173', // Restrict to known origin
+  origin: [process.env.CLIENT_URL || 'http://localhost:5173', 'https://edu-sage-six.vercel.app'], // Allow multiple origins
   methods: ['GET', 'POST', 'PUT', 'DELETE'], // Explicitly allow methods
   allowedHeaders: ['Content-Type', 'Authorization'], // Restrict headers
   credentials: true // Allow credentials
