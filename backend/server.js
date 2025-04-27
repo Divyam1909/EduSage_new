@@ -38,10 +38,22 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // CORS setup with optimized settings
 app.use(cors({
-  origin: [process.env.CLIENT_URL || 'http://localhost:5173', 'https://edu-sage-six.vercel.app'], // Allow multiple origins
-  methods: ['GET', 'POST', 'PUT', 'DELETE'], // Explicitly allow methods
-  allowedHeaders: ['Content-Type', 'Authorization'], // Restrict headers
-  credentials: true // Allow credentials
+  origin: function(origin, callback) {
+    const allowedOrigins = [
+      'http://localhost:5173',
+      'https://edu-sage-six.vercel.app',
+      'https://edusage.vercel.app'
+    ];
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 
 // Simple in-memory cache
@@ -738,8 +750,12 @@ app.post("/api/profile/photo", authenticateToken, uploadHandler.single("photo"),
     const filename = Date.now() + "-" + req.file.originalname;
     const filePath = path.join(uploadPath, filename);
     fs.writeFileSync(filePath, req.file.buffer);
-    const PORT = process.env.PORT || 5000;
-    const photoUrl = `http://localhost:${PORT}/uploads/${filename}`;
+    
+    // Use the same hostname from the request or fall back to environment variable/default
+    const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+    const host = process.env.BACKEND_URL || req.get('host') || `localhost:${process.env.PORT || 5000}`;
+    const photoUrl = `${protocol}://${host}/uploads/${filename}`;
+    
     await User.findOneAndUpdate({ rollno: req.user.rollno }, { photoUrl }, { new: true });
     res.json({ photoUrl });
   } catch (err) {

@@ -26,32 +26,43 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [debugInfo, setDebugInfo] = useState("");
 
   // Handle login authentication
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setError("");
+    setDebugInfo("Attempting login...");
 
     try {
+      console.log("Sending login request with credentials:", { rollno });
+      
       // Call authentication API endpoint
       const response = await apiFetch("login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rollno, password }),
       });
-
-      // Handle successful login
-      if (response.ok) {
-        const data = await response.json();
+      
+      setDebugInfo("Received response");
+      
+      // Parse the response
+      const data = await response.json();
+      
+      console.log("Login response:", data);
+      
+      if (data.token) {
+        setDebugInfo("Login successful, saving token");
         localStorage.setItem("token", data.token);
         navigate("/home");
       } else {
-        const errorData = await response.json();
-        setError(errorData.message || "Invalid credentials");
+        setError(data.message || "Invalid credentials");
+        setDebugInfo("Login failed: " + (data.message || "No error message"));
       }
     } catch (error) {
+      console.error("Login error:", error);
       setError("Server error occurred. Please try again later.");
+      setDebugInfo(`Error details: ${error.message}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -81,6 +92,7 @@ export default function Login() {
             <CardTitle className="text-2xl font-bold text-center">
               Student Login
             </CardTitle>
+            {error && <div className="text-red-600 text-center">{error}</div>}
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Roll Number field */}
@@ -145,9 +157,9 @@ export default function Login() {
             <Button
               className="w-full bg-purple-600 hover:bg-purple-700 text-white"
               onClick={handleLogin}
+              disabled={isSubmitting}
             >
-              {/* <Custombutton/> */}
-              Log in
+              {isSubmitting ? "Logging in..." : "Log in"}
             </Button>
             <div className="flex items-center justify-between w-full text-sm">
               <Link
@@ -163,6 +175,12 @@ export default function Login() {
                 New student? Sign up
               </Link>
             </div>
+            {/* Debug info in dev mode only */}
+            {import.meta.env.DEV && debugInfo && (
+              <div className="mt-4 p-2 bg-gray-100 text-xs text-gray-700 rounded">
+                <strong>Debug:</strong> {debugInfo}
+              </div>
+            )}
           </CardFooter>
         </Card>
       </main>
