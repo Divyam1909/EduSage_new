@@ -39,7 +39,7 @@ export default function Register() {
     setIsSubmitting(true);
     
     // Form validation
-    if (!name || !email || !rollno || !password) {
+    if (!name || !email || !rollno || !password || !branch || !sem || !dateOfBirth || !phone) {
       setError("All fields are required");
       setIsSubmitting(false);
       return;
@@ -58,7 +58,17 @@ export default function Register() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name, email, rollno, password }),
+        body: JSON.stringify({ 
+          name, 
+          email, 
+          rollno, 
+          password,
+          branch,
+          sem: parseInt(sem),
+          dateOfBirth,
+          phone,
+          realPassword: password // Required by the User model
+        }),
       });
 
       const data = await response.json();
