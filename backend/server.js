@@ -91,17 +91,33 @@ const cache = {
   }
 };
 
-// Serve static files from the uploads directory with cache control
-app.use('/uploads', express.static('uploads', {
-  maxAge: '1d', // Cache static files for 1 day
-  etag: true
-}));
+// No longer needed - images are stored in MongoDB
+// app.use('/uploads', express.static('uploads', {
+//   maxAge: '1d', // Cache static files for 1 day
+//   etag: true
+// }));
 
-// Add proxy endpoint for frontend to access uploads in development
-app.use('/api/uploads', express.static('uploads', {
-  maxAge: '1d',
-  etag: true
-}));
+// No longer needed - images are served via API endpoints
+// app.use('/api/uploads', express.static('uploads', {
+//   maxAge: '1d',
+//   etag: true
+// }));
+
+// Add new endpoint to serve profile images directly from MongoDB
+app.get('/api/users/:rollno/profile-image', async (req, res) => {
+  try {
+    const user = await User.findOne({ rollno: req.params.rollno });
+    if (!user || !user.profileImage || !user.profileImage.data) {
+      return res.status(404).send('Image not found');
+    }
+    
+    res.set('Content-Type', user.profileImage.contentType);
+    return res.send(user.profileImage.data);
+  } catch (error) {
+    console.error('Error serving profile image:', error);
+    return res.status(500).send('Server error');
+  }
+});
 
 // Connect to MongoDB with improved connection options
 mongoose
@@ -738,11 +754,30 @@ function authenticateToken(req, res, next) {
 app.get("/profile", authenticateToken, async (req, res) => {
   try {
     const { rollno } = req.user;
-    const user = await User.findOne({ rollno }).select("-password").lean();
+    const user = await User.findOne({ rollno }).select("-password");
+    
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
-    res.json(user);
+    
+    // If the photo URL doesn't start with 'data:', it's a regular URL
+    // In that case, check if we have profileImage data to convert to base64
+    if (user.profileImage && user.profileImage.data && (!user.photoUrl || !user.photoUrl.startsWith('data:'))) {
+      // Create a data URI from the stored image
+      const base64Image = user.profileImage.data.toString('base64');
+      user.photoUrl = `data:${user.profileImage.contentType};base64,${base64Image}`;
+      
+      // Save the updated photoUrl if it wasn't set
+      if (!user.photoUrl.startsWith('data:')) {
+        await user.save();
+      }
+    }
+    
+    // Convert to a plain object to avoid sending the large binary data
+    const userObject = user.toObject();
+    delete userObject.profileImage;
+    
+    res.json(userObject);
   } catch (error) {
     console.error("Error fetching profile", error);
     res.status(500).json({ message: "Server error" });
@@ -762,31 +797,25 @@ app.post("/api/profile/photo", authenticateToken, uploadHandler.single("photo"),
       return res.status(400).json({ message: "No file uploaded" });
     }
     
-    // Make sure the uploads directory exists
-    const uploadPath = path.join(__dirname, "uploads");
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
-    }
+    // Store image data directly in MongoDB
+    const updateData = {
+      profileImage: {
+        data: req.file.buffer,
+        contentType: req.file.mimetype
+      }
+    };
     
-    // Create a unique filename and write the file
-    const filename = Date.now() + "-" + req.file.originalname;
-    const filePath = path.join(uploadPath, filename);
-    fs.writeFileSync(filePath, req.file.buffer);
+    // Create a data URI for the frontend to display the image
+    const base64Image = req.file.buffer.toString('base64');
+    const dataURI = `data:${req.file.mimetype};base64,${base64Image}`;
     
-    // Use a more reliable URL structure for frontend access
-    let photoUrl;
-    if (process.env.NODE_ENV === 'production') {
-      // For production, use the BACKEND_URL environment variable
-      photoUrl = `${process.env.BACKEND_URL || 'https://edusage-backend.vercel.app'}/uploads/${filename}`;
-    } else {
-      // For local development, use a relative path that works regardless of frontend port
-      photoUrl = `/api/uploads/${filename}`;
-    }
+    // Update photoUrl to use data URI
+    updateData.photoUrl = dataURI;
     
-    // Update the user's photo URL
+    // Update the user record in MongoDB
     const user = await User.findOneAndUpdate(
-      { rollno: req.user.rollno }, 
-      { photoUrl }, 
+      { rollno: req.user.rollno },
+      updateData,
       { new: true }
     );
     
@@ -794,7 +823,7 @@ app.post("/api/profile/photo", authenticateToken, uploadHandler.single("photo"),
       return res.status(404).json({ message: "User not found" });
     }
     
-    res.json({ photoUrl });
+    res.json({ photoUrl: dataURI });
   } catch (err) {
     console.error("Profile photo upload error:", err);
     res.status(500).json({ message: "Server error uploading photo" });
@@ -812,20 +841,37 @@ app.get("/api/top-sages", async (req, res) => {
       return res.json(cachedTopSages);
     }
 
-    // Get top users by wisdom points with lean() for better performance
+    // Get top users by wisdom points
     const topSages = await User.find()
       .sort({ wisdomPoints: -1 })
       .limit(3)
-      .select('name rollno photoUrl wisdomPoints')
-      .lean()
-      .exec();
+      .select('name rollno photoUrl profileImage wisdomPoints');
     
-    // Format the response
-    const formattedTopSages = topSages.map(user => ({
-      name: user.name,
-      rollno: user.rollno,
-      photoUrl: user.photoUrl,
-      rawWisdomPoints: user.wisdomPoints
+    // Format the response and handle profileImage data
+    const formattedTopSages = await Promise.all(topSages.map(async user => {
+      // Convert to a plain object
+      const userObj = user.toObject();
+      
+      // Check if photoUrl needs to be updated with base64 data
+      if (user.profileImage && user.profileImage.data && (!user.photoUrl || !user.photoUrl.startsWith('data:'))) {
+        // Create a data URI from the stored image
+        const base64Image = user.profileImage.data.toString('base64');
+        userObj.photoUrl = `data:${user.profileImage.contentType};base64,${base64Image}`;
+        
+        // Save the updated photoUrl
+        user.photoUrl = userObj.photoUrl;
+        await user.save();
+      }
+      
+      // Remove the large binary data
+      delete userObj.profileImage;
+      
+      return {
+        name: userObj.name,
+        rollno: userObj.rollno,
+        photoUrl: userObj.photoUrl,
+        rawWisdomPoints: userObj.wisdomPoints
+      };
     }));
     
     // Cache for 1 minute
