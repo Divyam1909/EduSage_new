@@ -16,8 +16,9 @@ import {
   Calendar,
   Bot,
   Edit3,
+  LogOut,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { 
   LineChart, 
   Line, 
@@ -47,6 +48,7 @@ interface ClassResults {
 
 export default function ProfilePage() {
   const { userData, refreshUserData } = useUser();
+  const navigate = useNavigate();
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [showDetailedAnalysis, setShowDetailedAnalysis] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState<SubjectMarks | null>(null);
@@ -370,6 +372,12 @@ export default function ProfilePage() {
     setFormData({ ...formData, [name]: name === "subject" ? value : num });
   };
 
+  // Logout function
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    navigate("/login");
+  };
+
   return (
     <div className="flex min-h-screen bg-gray-100">
       {/* Left Side Menu */}
@@ -475,12 +483,21 @@ export default function ProfilePage() {
               <h2 className="text-2xl font-bold mb-2">
                 {userData ? userData.name : "Loading..."}
               </h2>
-              <Button
-                onClick={() => setIsStatsOpen(true)}
-                className="bg-purple-600 hover:bg-purple-700 text-white"
-              >
-                Check my stats
-              </Button>
+              <div className="flex justify-center space-x-3">
+                <Button
+                  onClick={() => setIsStatsOpen(true)}
+                  className="bg-purple-600 hover:bg-purple-700 text-white"
+                >
+                  Check my stats
+                </Button>
+                <Button
+                  onClick={handleLogout}
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                >
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Logout
+                </Button>
+              </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
               <div>
