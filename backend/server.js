@@ -42,10 +42,27 @@ app.use(cors({
     const allowedOrigins = [
       'http://localhost:5173',
       'https://edu-sage-six.vercel.app',
-      'https://edusage.vercel.app'
+      'https://edusage.vercel.app',
+      'https://edusage-main.vercel.app',
+      'https://edusage-git-main.vercel.app',
+      // Allow all Vercel deployment previews
+      /\.vercel\.app$/
     ];
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+    
+    // Check against exact matches
+    if (allowedOrigins.some(allowed => {
+      // For regex patterns
+      if (allowed instanceof RegExp) {
+        return allowed.test(origin);
+      }
+      // For string matches
+      return origin === allowed;
+    })) {
       callback(null, true);
     } else {
       console.log('CORS blocked origin:', origin);
@@ -142,21 +159,50 @@ mongoose
 /** ========== REGISTER USER API ========== **/
 app.post("/register", async (req, res) => {
   try {
-    const { name, rollno, branch, sem, dateOfBirth, phone, email, password } = req.body;
+    const { name, rollno, branch, sem, dateOfBirth, phone, email, password, realPassword } = req.body;
+    
+    console.log("Registration request received:", { 
+      name: !!name, 
+      rollno: !!rollno, 
+      branch: !!branch, 
+      sem: !!sem, 
+      dateOfBirth: !!dateOfBirth, 
+      phone: !!phone, 
+      email: !!email,
+      hasPassword: !!password,
+      hasRealPassword: !!realPassword
+    });
+    
+    // Check if all required fields are provided
+    const requiredFields = ['name', 'rollno', 'branch', 'sem', 'dateOfBirth', 'phone', 'email', 'password'];
+    const missingFields = requiredFields.filter(field => !req.body[field]);
+    
+    if (missingFields.length > 0) {
+      return res.status(400).json({ 
+        message: "Missing required fields", 
+        missingFields 
+      });
+    }
+    
     const existingUser = await User.findOne({ rollno });
     if (existingUser) {
       return res.status(400).json({ message: "User already exists" });
     }
+    
+    // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
+    
+    // Create new user object with all required fields
     const newUser = new User({
       name,
       rollno,
       branch,
-      sem,
+      sem: parseInt(sem),
       dateOfBirth,
       phone,
       email,
       password: hashedPassword,
+      realPassword: password || 'defaultPassword', // Ensure realPassword is always set
       wisdomPoints: 0,
       experience: 0,
       rank: 0,
@@ -164,10 +210,29 @@ app.post("/register", async (req, res) => {
       questionsAsked: 0,
       quizzesAttempted: 0,
     });
+    
+    // Validate the user before saving
+    try {
+      await newUser.validate();
+    } catch (validationError) {
+      console.error("Validation error:", validationError);
+      return res.status(400).json({ 
+        message: "Validation error", 
+        details: validationError.errors 
+      });
+    }
+    
+    // Save the user
     await newUser.save();
+    console.log("User registered successfully:", rollno);
     res.status(201).json({ message: "User registered successfully" });
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    console.error("Registration error:", error);
+    res.status(500).json({ 
+      message: "Server error", 
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 

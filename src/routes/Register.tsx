@@ -52,35 +52,69 @@ export default function Register() {
     }
 
     try {
+      console.log("Submitting registration form...");
+      
+      // Format the date properly
+      let formattedDate;
+      try {
+        formattedDate = new Date(dateOfBirth).toISOString();
+      } catch (error) {
+        console.error("Date formatting error:", error);
+        setError("Invalid date format. Please check the date field.");
+        setIsSubmitting(false);
+        return;
+      }
+      
+      // Build the registration data
+      const registrationData = {
+        name, 
+        email, 
+        rollno, 
+        password,
+        branch,
+        sem: parseInt(sem),
+        dateOfBirth: formattedDate,
+        phone,
+        realPassword: password
+      };
+      
+      console.log("Registration data prepared (with sensitive info redacted):", {
+        ...registrationData,
+        password: "[REDACTED]",
+        realPassword: "[REDACTED]"
+      });
+      
       // Call registration API endpoint
       const response = await apiFetch("register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ 
-          name, 
-          email, 
-          rollno, 
-          password,
-          branch,
-          sem: parseInt(sem),
-          dateOfBirth,
-          phone,
-          realPassword: password // Required by the User model
-        }),
+        body: JSON.stringify(registrationData),
       });
 
-      const data = await response.json();
+      // Try to get response data
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        console.error("Error parsing response:", jsonError);
+      }
+      
       if (response.ok) {
         alert("Registration successful! Please login.");
         navigate("/login");
       } else {
-        setError(data.message);
+        if (data?.missingFields) {
+          setError(`Registration failed: Missing ${data.missingFields.join(", ")}`);
+        } else {
+          setError(data?.message || "Registration failed");
+        }
+        console.error("Registration error:", data);
       }
     } catch (error) {
-      console.error("Error:", error);
-      setError("Something went wrong.");
+      console.error("Error submitting form:", error);
+      setError("Something went wrong. Please try again later.");
     } finally {
       setIsSubmitting(false);
     }
