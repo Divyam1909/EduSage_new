@@ -450,6 +450,12 @@ export default function ProfilePage() {
                 src={profilePhoto}
                 alt="Student Photo"
                 className="w-48 h-48 rounded-full object-cover"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.onerror = null; // Prevent infinite error loops
+                  target.src = "/placeholder-user.jpg";
+                  console.log("Error loading profile image, using placeholder");
+                }}
               />
               <button
                 onClick={handleEditPhotoClick}

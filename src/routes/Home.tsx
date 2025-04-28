@@ -386,9 +386,14 @@ export default function Home() {
                 <Avatar>
                   <AvatarImage
                     src={userData && userData.photoUrl ? userData.photoUrl : "/placeholder-user.jpg"}
-                    alt="User"
+                    alt={userProfile.name}
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.onerror = null;
+                      target.src = "/placeholder-user.jpg";
+                    }}
                   />
-                  <AvatarFallback className="text-black">
+                  <AvatarFallback>
                     {userData && userData.name ? getInitials(userData.name) : "AV"}
                   </AvatarFallback>
                 </Avatar>
@@ -461,6 +466,11 @@ export default function Home() {
                   <AvatarImage
                     src={userData && userData.photoUrl ? userData.photoUrl : "/placeholder-user.jpg"}
                     alt={userProfile.name}
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.onerror = null;
+                      target.src = "/placeholder-user.jpg";
+                    }}
                   />
                   <AvatarFallback>
                     {userData && userData.name ? getInitials(userData.name) : "AV"}
@@ -533,6 +543,11 @@ export default function Home() {
                       <AvatarImage
                         src={sage.photoUrl ? sage.photoUrl : "/placeholder-user.jpg"}
                         alt={sage.name}
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.onerror = null;
+                          target.src = "/placeholder-user.jpg";
+                        }}
                       />
                       <AvatarFallback>{sage.name[0]}</AvatarFallback>
                     </Avatar>

@@ -97,6 +97,12 @@ app.use('/uploads', express.static('uploads', {
   etag: true
 }));
 
+// Add proxy endpoint for frontend to access uploads in development
+app.use('/api/uploads', express.static('uploads', {
+  maxAge: '1d',
+  etag: true
+}));
+
 // Connect to MongoDB with improved connection options
 mongoose
   .connect(process.env.MONGO_URI, {
@@ -767,12 +773,15 @@ app.post("/api/profile/photo", authenticateToken, uploadHandler.single("photo"),
     const filePath = path.join(uploadPath, filename);
     fs.writeFileSync(filePath, req.file.buffer);
     
-    // Use the same hostname from the request or fall back to environment variable/default
-    const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
-    const host = process.env.BACKEND_URL || req.get('host') || `localhost:${process.env.PORT || 5000}`;
-    const photoUrl = process.env.NODE_ENV === 'production' 
-      ? `${process.env.BACKEND_URL}/uploads/${filename}`
-      : `${protocol}://${host}/uploads/${filename}`;
+    // Use a more reliable URL structure for frontend access
+    let photoUrl;
+    if (process.env.NODE_ENV === 'production') {
+      // For production, use the BACKEND_URL environment variable
+      photoUrl = `${process.env.BACKEND_URL || 'https://edusage-backend.vercel.app'}/uploads/${filename}`;
+    } else {
+      // For local development, use a relative path that works regardless of frontend port
+      photoUrl = `/api/uploads/${filename}`;
+    }
     
     // Update the user's photo URL
     const user = await User.findOneAndUpdate(
