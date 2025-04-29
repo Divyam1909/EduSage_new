@@ -23,13 +23,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { BookOpen } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Checkbox } from "@/components/ui/checkbox";
 import AILoader from "@/components/AILoader";
 import { useToast } from "@/components/ToastContainer";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { apiClient } from "../utils/api";
+import { useUser } from "../context/UserContext";
 
 interface Event {
   id?: string;
@@ -37,6 +38,7 @@ interface Event {
   date: string; // ISO string including time if provided
   time?: string;
   details?: string;
+  userId?: string; // Add userId field
   notifications?: {
     dayBefore: boolean;
     dayOf: boolean;
@@ -50,6 +52,8 @@ interface Event {
 }
 
 export default function CalendarComponent() {
+  const navigate = useNavigate();
+  const { userData, isLoading: userLoading } = useUser();
   const [currentDateTime, setCurrentDateTime] = useState(new Date());
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
@@ -99,14 +103,53 @@ export default function CalendarComponent() {
     return `${days} days, ${hours} hours, ${minutes} minutes remaining.`;
   };
 
+  // Check if user is authenticated
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      // Redirect to login if not authenticated
+      showToast("Please log in to access your calendar", "error");
+      navigate("/login");
+      return;
+    }
+
+    // Verify token is valid format
+    try {
+      const tokenParts = token.split('.');
+      if (tokenParts.length !== 3) {
+        // Invalid token format
+        localStorage.removeItem("token");
+        showToast("Invalid authentication token. Please log in again.", "error");
+        navigate("/login");
+      }
+    } catch (error) {
+      localStorage.removeItem("token");
+      showToast("Invalid authentication token. Please log in again.", "error");
+      navigate("/login");
+    }
+  }, [navigate, showToast]);
+
   // Fetch events from the backend
   useEffect(() => {
-    refreshEvents();
-  }, []);
+    if (userData) {
+      refreshEvents();
+    }
+  }, [userData]);
 
   const refreshEvents = () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      showToast("Please log in to access your calendar", "error");
+      navigate("/login");
+      return;
+    }
+
     apiClient
-      .get("/api/events")
+      .get("/api/events", {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
       .then((response) => {
         const transformed = response.data.map((ev: any) => ({
           ...ev,
@@ -116,7 +159,12 @@ export default function CalendarComponent() {
       })
       .catch((error) => {
         console.error("Error fetching events:", error);
-        showToast("Failed to load calendar events", "error");
+        if (error.response && error.response.status === 401) {
+          showToast("Your session has expired. Please log in again.", "error");
+          navigate("/login");
+        } else {
+          showToast("Failed to load calendar events", "error");
+        }
       });
   };
 
@@ -125,6 +173,14 @@ export default function CalendarComponent() {
       showToast("Title and Date are required!", "error");
       return;
     }
+    
+    const token = localStorage.getItem("token");
+    if (!token) {
+      showToast("Please log in to add events", "error");
+      navigate("/login");
+      return;
+    }
+    
     try {
       // Correctly format the date with time
       let formattedDate;
@@ -143,10 +199,22 @@ export default function CalendarComponent() {
           atTime: newEvent.time ? newEvent.notifications.atTime : false
         }
       };
+      
+      console.log("Adding event:", eventToAdd);
+      console.log("Using token:", token.substring(0, 10) + "...");
+      
       const response = await apiClient.post(
         "/api/events",
-        eventToAdd
+        eventToAdd,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
       );
+      
+      console.log("Event added, response:", response.data);
+      
       const addedEvent = { ...response.data, id: response.data._id };
       setEvents((prevEvents) => [...prevEvents, addedEvent]);
       setIsAddEventModalOpen(false);
@@ -165,7 +233,21 @@ export default function CalendarComponent() {
       showToast("Event added successfully", "success");
     } catch (error) {
       console.error("Error adding event:", error);
-      showToast("Failed to add event", "error");
+      let errorMessage = "Failed to add event";
+      
+      if (error.response) {
+        // Server responded with an error status code
+        console.error("Error response data:", error.response.data);
+        
+        if (error.response.status === 401) {
+          errorMessage = "Your session has expired. Please log in again.";
+          navigate("/login");
+        } else if (error.response.status === 500) {
+          errorMessage = error.response.data?.error || "Server error. Please try again later.";
+        }
+      }
+      
+      showToast(errorMessage, "error");
     }
   };
 
@@ -174,6 +256,14 @@ export default function CalendarComponent() {
       showToast("Title and Date are required!", "error");
       return;
     }
+    
+    const token = localStorage.getItem("token");
+    if (!token) {
+      showToast("Please log in to update events", "error");
+      navigate("/login");
+      return;
+    }
+    
     try {
       // Correctly format the date with time
       let formattedDate;
@@ -192,10 +282,17 @@ export default function CalendarComponent() {
           atTime: newEvent.time ? newEvent.notifications.atTime : false
         }
       };
+      
       const response = await apiClient.put(
         `/api/events/${selectedEvent.id}`,
-        eventToUpdate
+        eventToUpdate,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
       );
+      
       const updatedEvent = { ...response.data, id: response.data._id };
       setEvents((prevEvents) =>
         prevEvents.map((ev) => (ev.id === selectedEvent.id ? updatedEvent : ev))
@@ -217,17 +314,37 @@ export default function CalendarComponent() {
       showToast("Event updated successfully", "success");
     } catch (error) {
       console.error("Error updating event:", error);
-      showToast("Failed to update event", "error");
+      if (error.response && error.response.status === 401) {
+        showToast("Your session has expired. Please log in again.", "error");
+        navigate("/login");
+      } else if (error.response && error.response.status === 403) {
+        showToast("You don't have permission to update this event", "error");
+      } else {
+        showToast("Failed to update event", "error");
+      }
     }
   };
 
   const handleDeleteEvent = async () => {
     if (!selectedEvent) return;
     
+    const token = localStorage.getItem("token");
+    if (!token) {
+      showToast("Please log in to delete events", "error");
+      navigate("/login");
+      return;
+    }
+    
     try {
       await apiClient.delete(
-        `/api/events/${selectedEvent.id}`
+        `/api/events/${selectedEvent.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
       );
+      
       setEvents((prevEvents) =>
         prevEvents.filter((ev) => ev.id !== selectedEvent.id)
       );
@@ -236,7 +353,14 @@ export default function CalendarComponent() {
       showToast("Event deleted successfully", "success");
     } catch (error) {
       console.error("Error deleting event:", error);
-      showToast("Failed to delete event", "error");
+      if (error.response && error.response.status === 401) {
+        showToast("Your session has expired. Please log in again.", "error");
+        navigate("/login");
+      } else if (error.response && error.response.status === 403) {
+        showToast("You don't have permission to delete this event", "error");
+      } else {
+        showToast("Failed to delete event", "error");
+      }
     }
   };
 
@@ -257,8 +381,21 @@ export default function CalendarComponent() {
   // Update handleDeletePdfEvents to use the confirmation dialog
   const handleDeletePdfEvents = async () => {    
     setDeletingPdfEvents(true);
+    
+    const token = localStorage.getItem("token");
+    if (!token) {
+      showToast("Please log in to delete events", "error");
+      navigate("/login");
+      setDeletingPdfEvents(false);
+      return;
+    }
+    
     try {
-      const response = await apiClient.delete('/api/calendar/pdf-events');
+      const response = await apiClient.delete('/api/calendar/pdf-events', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
       
       // Check for count first, then deletedCount, then fall back to a generic message
       if (response.data.count !== undefined) {
@@ -273,7 +410,12 @@ export default function CalendarComponent() {
       refreshEvents();
     } catch (error) {
       console.error('Error deleting PDF events:', error);
-      showToast("Failed to delete PDF events", "error");
+      if (error.response && error.response.status === 401) {
+        showToast("Your session has expired. Please log in again.", "error");
+        navigate("/login");
+      } else {
+        showToast("Failed to delete PDF events", "error");
+      }
     } finally {
       setDeletingPdfEvents(false);
     }
@@ -287,6 +429,14 @@ export default function CalendarComponent() {
   // Update the handleUploadPDF function with better UI feedback
   const handleUploadPDF = async () => {
     if (!selectedFile) return;
+    
+    const token = localStorage.getItem("token");
+    if (!token) {
+      showToast("Please log in to upload calendar", "error");
+      navigate("/login");
+      return;
+    }
+    
     setUploading(true);
     setUploadProgress({ status: 'uploading', message: 'Uploading file...' });
     
@@ -299,10 +449,15 @@ export default function CalendarComponent() {
         setUploadProgress({ status: 'parsing', message: 'AI is analyzing your calendar...' });
       }, 1000);
       
-      // Remove explicit Content-Type header - let apiClient handle it
+      // Add Authorization header for authenticated request
       const response = await apiClient.post(
         "/api/calendar/upload",
-        formData
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
       );
       
       setUploadProgress({ status: 'complete' });
@@ -317,7 +472,13 @@ export default function CalendarComponent() {
         status: 'error', 
         message: `Error uploading PDF: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
-      showToast(`Error uploading PDF: ${error instanceof Error ? error.message : 'Unknown error'}`, "error");
+      
+      if (error.response && error.response.status === 401) {
+        showToast("Your session has expired. Please log in again.", "error");
+        navigate("/login");
+      } else {
+        showToast(`Error uploading PDF: ${error instanceof Error ? error.message : 'Unknown error'}`, "error");
+      }
     } finally {
       setUploading(false);
     }

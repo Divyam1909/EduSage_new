@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { extractEventsFromPDF } = require('../pdfParser');
 const Event = require('../models/Event');
+const { authenticateToken } = require('../middleware/auth'); // Import authentication middleware
 
 // Configure multer storage for PDF uploads
 const storage = multer.diskStorage({
@@ -38,7 +39,7 @@ const upload = multer({
 });
 
 // Route to upload and process PDF
-router.post('/upload', upload.single('pdf'), async (req, res) => {
+router.post('/upload', authenticateToken, upload.single('pdf'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No PDF file uploaded' });
@@ -94,6 +95,7 @@ router.post('/upload', upload.single('pdf'), async (req, res) => {
         title: title,
         date: event.date,
         details: details,
+        userId: req.user.rollno, // Use rollno from JWT token instead of id
         importedFromPdf: true,
         notifications: notifications,
         notificationStatus: notificationStatus
@@ -118,7 +120,7 @@ router.post('/upload', upload.single('pdf'), async (req, res) => {
 });
 
 // Add an alternative route that matches the frontend route
-router.post('/upload-pdf', upload.single('pdf'), async (req, res) => {
+router.post('/upload-pdf', authenticateToken, upload.single('pdf'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No PDF file uploaded' });
@@ -174,6 +176,7 @@ router.post('/upload-pdf', upload.single('pdf'), async (req, res) => {
         title: title,
         date: event.date,
         details: details,
+        userId: req.user.rollno, // Use rollno from JWT token instead of id
         importedFromPdf: true,
         notifications: notifications,
         notificationStatus: notificationStatus
@@ -198,9 +201,13 @@ router.post('/upload-pdf', upload.single('pdf'), async (req, res) => {
 });
 
 // Route to delete all PDF-imported events
-router.delete('/pdf-events', async (req, res) => {
+router.delete('/pdf-events', authenticateToken, async (req, res) => {
   try {
-    const result = await Event.deleteMany({ importedFromPdf: true });
+    // Only delete PDF events for the authenticated user
+    const result = await Event.deleteMany({ 
+      importedFromPdf: true,
+      userId: req.user.rollno 
+    });
     
     return res.status(200).json({
       message: `Successfully deleted ${result.deletedCount} PDF-imported events`,

@@ -20,6 +20,7 @@ const QuizAttempt = require("./models/QuizAttempt.js");
 
 // Import routes
 const calendarRoutes = require('./routes/calendarRoutes');
+const eventRoutes = require('./routes/eventRoutes');
 
 const app = express();
 
@@ -240,20 +241,33 @@ app.post("/register", async (req, res) => {
 app.post("/login", async (req, res) => {
   try {
     const { rollno, password } = req.body;
+    console.log(`Login attempt for rollno: ${rollno}`);
+    
     const user = await User.findOne({ rollno });
     if (!user) {
+      console.log(`Login failed: User with rollno ${rollno} not found`);
       return res.status(400).json({ message: "Invalid credentials" });
     }
+    
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
+      console.log(`Login failed: Invalid password for user ${rollno}`);
       return res.status(400).json({ message: "Invalid credentials" });
     }
-    const token = jwt.sign({ rollno: user.rollno }, process.env.JWT_SECRET, {
-      expiresIn: "1h",
+    
+    // Include both id and rollno in the token
+    const token = jwt.sign({ 
+      id: user._id.toString(), 
+      rollno: user.rollno 
+    }, process.env.JWT_SECRET, {
+      expiresIn: "24h", // Extend token expiry to 24 hours
     });
+    
+    console.log(`Login successful for user ${rollno}`);
     res.json({ message: "Login successful", token });
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    console.error("Login error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 });
 
@@ -339,88 +353,8 @@ app.get("/api/resources/bookmarked", async (req, res) => {
 });
 
 /** ========== EVENT APIs ========== **/
-app.post("/api/events", async (req, res) => {
-  try {
-    const { title, date, time, details, notifications } = req.body;
-    if (!title || !date) {
-      return res.status(400).json({ message: "Title and date are required" });
-    }
-    
-    // Create a new event with notification settings
-    const newEvent = new Event({ 
-      title, 
-      date, 
-      time, 
-      details, 
-      notifications: notifications || {
-        dayBefore: true,
-        dayOf: true,
-        atTime: time ? true : false
-      },
-      notificationStatus: {
-        dayBeforeSent: false,
-        dayOfSent: false,
-        atTimeSent: false
-      }
-    });
-    
-    await newEvent.save();
-    res.status(201).json(newEvent);
-  } catch (error) {
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-app.get("/api/events", async (req, res) => {
-  try {
-    const events = await Event.find().lean();
-    res.json(events);
-  } catch (error) {
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-app.put("/api/events/:id", async (req, res) => {
-  try {
-    const { title, date, time, details, notifications } = req.body;
-    
-    // Update event with notification settings
-    const updatedEvent = await Event.findByIdAndUpdate(
-      req.params.id,
-      { 
-        title, 
-        date, 
-        time, 
-        details,
-        notifications: notifications || {
-          dayBefore: true,
-          dayOf: true,
-          atTime: time ? true : false
-        }
-      },
-      { new: true }
-    );
-    
-    if (!updatedEvent) {
-      return res.status(404).json({ message: "Event not found" });
-    }
-    res.json(updatedEvent);
-  } catch (error) {
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-app.delete("/api/events/:id", async (req, res) => {
-  try {
-    const deletedEvent = await Event.findByIdAndDelete(req.params.id);
-    if (!deletedEvent) {
-      return res.status(404).json({ message: "Event not found" });
-    }
-    res.json({ message: "Event deleted successfully" });
-  } catch (error) {
-    res.status(500).json({ message: "Server error" });
-  }
-});
+// Use the event routes
+app.use('/api/events', eventRoutes);
 
 /** ========== NEW ENDPOINT: Retrieve Pending Notifications ========== **/
 // Optimized to query only potentially relevant events
@@ -814,6 +748,9 @@ function authenticateToken(req, res, next) {
     next();
   });
 }
+
+// Export the authenticateToken function so it can be used in route files
+module.exports.authenticateToken = authenticateToken;
 
 // Get user profile
 app.get("/profile", authenticateToken, async (req, res) => {
@@ -1349,7 +1286,7 @@ async function checkAndProcessNotifications() {
 
     logToFile(`Found ${dayBeforeEvents.length} events for day-before notification`, 'notification');
     for (const event of dayBeforeEvents) {
-      logToFile(`Sending day-before notification for event: ${event.title}`, 'notification');
+      logToFile(`Sending day-before notification for event: ${event.title} to user: ${event.userId}`, 'notification');
       await sendNotification(event, "day-before");
       await Event.updateOne({ _id: event._id }, { $set: { "notificationStatus.dayBeforeSent": true } });
     }
@@ -1366,7 +1303,7 @@ async function checkAndProcessNotifications() {
 
     logToFile(`Found ${dayOfEvents.length} events for day-of notification`, 'notification');
     for (const event of dayOfEvents) {
-      logToFile(`Sending day-of notification for event: ${event.title}`, 'notification');
+      logToFile(`Sending day-of notification for event: ${event.title} to user: ${event.userId}`, 'notification');
       await sendNotification(event, "day-of");
       await Event.updateOne({ _id: event._id }, { $set: { "notificationStatus.dayOfSent": true } });
     }
@@ -1399,7 +1336,7 @@ async function checkAndProcessNotifications() {
 
     logToFile(`Sending ${atTimeEventsToSend.length} at-time notifications`, 'notification');
     for (const event of atTimeEventsToSend) {
-      logToFile(`Sending at-time notification for event: ${event.title}`, 'notification');
+      logToFile(`Sending at-time notification for event: ${event.title} to user: ${event.userId}`, 'notification');
       await sendNotification(event, "at-time");
       await Event.updateOne({ _id: event._id }, { $set: { "notificationStatus.atTimeSent": true } });
     }
@@ -1415,15 +1352,16 @@ async function sendNotification(event, type) {
   // In a real implementation, this would send push notifications, emails, or other alerts
   // For now, we'll just log the notification
   const message = {
-    "day-before": `Reminder: "${event.title}" is scheduled for tomorrow`,
-    "day-of": `Reminder: "${event.title}" is scheduled for today`,
-    "at-time": `Reminder: "${event.title}" is starting now`
+    "day-before": `Reminder for user ${event.userId}: "${event.title}" is scheduled for tomorrow`,
+    "day-of": `Reminder for user ${event.userId}: "${event.title}" is scheduled for today`,
+    "at-time": `Reminder for user ${event.userId}: "${event.title}" is starting now`
   }[type];
   
   logToFile(`NOTIFICATION: ${message}`);
   
   // Here you would integrate with a notification service like Firebase Cloud Messaging,
   // send emails, or use browser notifications through a service worker
+  // The notification would be sent specifically to the user identified by event.userId
   
   return true;
 }
