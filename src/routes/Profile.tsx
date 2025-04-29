@@ -17,6 +17,7 @@ import {
   Bot,
   Edit3,
   LogOut,
+  Save,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { 
@@ -78,6 +79,20 @@ export default function ProfilePage() {
   const [editingMarkType, setEditingMarkType] = useState("");
   const [editingMarkValue, setEditingMarkValue] = useState("");
   const [rankData, setRankData] = useState({ rank: 0, average: 0 });
+  
+  // New state for profile editing
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [profileFormData, setProfileFormData] = useState({
+    name: "",
+    branch: "",
+    sem: "",
+    email: "",
+    phone: "",
+    dateOfBirth: ""
+  });
+  const [profileUpdateError, setProfileUpdateError] = useState("");
+  const [profileUpdateSuccess, setProfileUpdateSuccess] = useState("");
+  const [updatingProfile, setUpdatingProfile] = useState(false);
 
   // Calculate total marks for each subject
   const calculateTotalMarks = (mark: SubjectMarks) => {
@@ -378,6 +393,84 @@ export default function ProfilePage() {
     navigate("/login");
   };
 
+  // Initialize profile form data when userData changes
+  useEffect(() => {
+    if (userData) {
+      setProfileFormData({
+        name: userData.name || "",
+        branch: userData.branch || "",
+        sem: userData.sem?.toString() || "",
+        email: userData.email || "",
+        phone: userData.phone || "",
+        // Format date to YYYY-MM-DD for input field
+        dateOfBirth: userData.dateOfBirth ? new Date(userData.dateOfBirth).toISOString().split('T')[0] : ""
+      });
+    }
+  }, [userData]);
+
+  // Handle profile field changes
+  const handleProfileInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setProfileFormData((prev) => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  // Handle profile update
+  const handleProfileUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Reset messages
+    setProfileUpdateError("");
+    setProfileUpdateSuccess("");
+    
+    // Validate form data
+    if (!profileFormData.name || !profileFormData.branch || !profileFormData.sem || 
+        !profileFormData.email || !profileFormData.phone) {
+      setProfileUpdateError("All fields are required");
+      return;
+    }
+    
+    try {
+      setUpdatingProfile(true);
+      
+      const response = await apiFetch("api/profile/update", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(profileFormData)
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setProfileUpdateSuccess("Profile updated successfully");
+        
+        // Close the dialog after a delay
+        setTimeout(() => {
+          setIsEditProfileOpen(false);
+          // Refresh user data to reflect changes
+          refreshUserData();
+        }, 1500);
+      } else {
+        const errorData = await response.json();
+        setProfileUpdateError(errorData.message || "Failed to update profile");
+      }
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      setProfileUpdateError("An error occurred while updating your profile");
+    } finally {
+      setUpdatingProfile(false);
+    }
+  };
+
+  // Open edit profile dialog
+  const handleEditProfileClick = () => {
+    setIsEditProfileOpen(true);
+  };
+
   return (
     <div className="flex min-h-screen bg-gray-100">
       {/* Left Side Menu */}
@@ -489,6 +582,13 @@ export default function ProfilePage() {
                   className="bg-purple-600 hover:bg-purple-700 text-white"
                 >
                   Check my stats
+                </Button>
+                <Button
+                  onClick={handleEditProfileClick}
+                  className="bg-purple-600 hover:bg-purple-700 text-white"
+                >
+                  <Edit3 className="mr-2 h-4 w-4" />
+                  Edit Profile
                 </Button>
                 <Button
                   onClick={handleLogout}
@@ -733,6 +833,124 @@ export default function ProfilePage() {
             <div className="mt-4">
               <Button onClick={() => setIsStatsOpen(false)}>Close</Button>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Profile Dialog */}
+        <Dialog open={isEditProfileOpen} onOpenChange={setIsEditProfileOpen}>
+          <DialogContent className="sm:max-w-[500px] mx-auto">
+            <DialogHeader>
+              <DialogTitle>Edit Profile</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleProfileUpdate} className="py-4">
+              {profileUpdateError && (
+                <div className="bg-red-100 text-red-700 p-3 rounded mb-4">
+                  {profileUpdateError}
+                </div>
+              )}
+              {profileUpdateSuccess && (
+                <div className="bg-green-100 text-green-700 p-3 rounded mb-4">
+                  {profileUpdateSuccess}
+                </div>
+              )}
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <label className="block font-medium mb-1">Name:</label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={profileFormData.name}
+                    onChange={handleProfileInputChange}
+                    className="w-full p-2 border rounded"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block font-medium mb-1">Branch:</label>
+                  <input
+                    type="text"
+                    name="branch"
+                    value={profileFormData.branch}
+                    onChange={handleProfileInputChange}
+                    className="w-full p-2 border rounded"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block font-medium mb-1">Semester:</label>
+                  <select
+                    name="sem"
+                    value={profileFormData.sem}
+                    onChange={handleProfileInputChange}
+                    className="w-full p-2 border rounded"
+                    required
+                  >
+                    <option value="">Select Semester</option>
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
+                      <option key={sem} value={sem}>
+                        {sem}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-medium mb-1">Email:</label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={profileFormData.email}
+                    onChange={handleProfileInputChange}
+                    className="w-full p-2 border rounded"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block font-medium mb-1">Phone Number:</label>
+                  <input
+                    type="tel"
+                    name="phone"
+                    value={profileFormData.phone}
+                    onChange={handleProfileInputChange}
+                    className="w-full p-2 border rounded"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block font-medium mb-1">Date of Birth:</label>
+                  <input
+                    type="date"
+                    name="dateOfBirth"
+                    value={profileFormData.dateOfBirth}
+                    onChange={handleProfileInputChange}
+                    className="w-full p-2 border rounded"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="flex space-x-3 mt-6">
+                <Button 
+                  type="submit" 
+                  className="bg-purple-600 hover:bg-purple-700 text-white"
+                  disabled={updatingProfile}
+                >
+                  {updatingProfile ? (
+                    <span>Updating...</span>
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      Save Changes
+                    </>
+                  )}
+                </Button>
+                <Button 
+                  type="button" 
+                  variant="outline"
+                  onClick={() => setIsEditProfileOpen(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
           </DialogContent>
         </Dialog>
       </div>

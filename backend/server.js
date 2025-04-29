@@ -786,6 +786,60 @@ app.get("/profile", authenticateToken, async (req, res) => {
   }
 });
 
+/** ========== NEW ENDPOINT: Update User Profile ========== **/
+app.put("/api/profile/update", authenticateToken, async (req, res) => {
+  try {
+    const { rollno } = req.user;
+    const { name, branch, sem, email, phone, dateOfBirth } = req.body;
+    
+    // Validate required fields
+    if (!name || !branch || !sem || !email || !phone) {
+      return res.status(400).json({ message: "Required fields missing" });
+    }
+    
+    // Create update object with validated fields
+    const updateData = {
+      name, 
+      branch, 
+      sem: parseInt(sem), 
+      email, 
+      phone
+    };
+    
+    // Only update dateOfBirth if it's provided and valid
+    if (dateOfBirth) {
+      updateData.dateOfBirth = new Date(dateOfBirth);
+      
+      // Check if date is valid
+      if (isNaN(updateData.dateOfBirth.getTime())) {
+        return res.status(400).json({ message: "Invalid date format" });
+      }
+    }
+    
+    // Update the user record
+    const updatedUser = await User.findOneAndUpdate(
+      { rollno },
+      updateData,
+      { new: true, runValidators: true }
+    ).select("-password -profileImage");
+    
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    
+    res.json({ 
+      message: "Profile updated successfully",
+      user: updatedUser
+    });
+  } catch (error) {
+    console.error("Error updating profile:", error);
+    res.status(500).json({ 
+      message: "Server error", 
+      error: error.message 
+    });
+  }
+});
+
 /** ========== NEW ENDPOINT: Update Profile Photo ========== **/
 app.post("/api/profile/photo", authenticateToken, uploadHandler.single("photo"), async (req, res) => {
   try {
