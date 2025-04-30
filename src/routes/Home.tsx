@@ -30,7 +30,7 @@ import { formatDate, getInitials, LEVELS, calculateLevel } from "@/lib/utils";
 import { useUser } from "@/context/UserContext";
 
 export default function Home() {
-  const { userData, isLoading, refreshUserData } = useUser();
+  const { userData, isLoading, refreshUserData, userRankData, fetchUserRankings } = useUser();
   const [questions, setQuestions] = useState<any[]>([]);
   const [subjectMarks, setSubjectMarks] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -41,7 +41,7 @@ export default function Home() {
   const [toasts, setToasts] = useState<any[]>([]);
   const [showNotificationPanel, setShowNotificationPanel] = useState(false);
   // New state for class stats (class average and rank)
-  const [classStats, setClassStats] = useState({ classAverageResult: 0, rank: 0 });
+  const [classStats, setClassStats] = useState({ classAverageResult: 0 });
   // State to track if more questions should be shown
   const [showAllQuestions, setShowAllQuestions] = useState(false);
   // Loading states for different sections
@@ -59,7 +59,7 @@ export default function Home() {
         const { data } = await apiClient.get("/api/top-sages");
         setTopSages(data);
       } catch (err) {
-        console.error("Error fetching top sages:", err);
+        // Silent error
       } finally {
         setLoadingSages(false);
       }
@@ -71,10 +71,19 @@ export default function Home() {
     if (!userData || !loadingMarks) return;
     
     try {
-      const { data } = await apiClient.get("/api/user/stats/subject");
-      setSubjectMarks(data);
+      const { data } = await apiClient.get("/api/user/stats/subject", {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`
+        }
+      });
+      
+      if (Array.isArray(data)) {
+        setSubjectMarks(data);
+      } else {
+        setSubjectMarks([]);
+      }
     } catch (err) {
-      console.error("Error fetching subject marks:", err);
+      setSubjectMarks([]);
     } finally {
       setLoadingMarks(false);
     }
@@ -87,7 +96,7 @@ export default function Home() {
         const { data } = await apiClient.get("/api/questions");
         setQuestions(data);
       } catch (error) {
-        console.error("Error fetching questions!", error);
+        // Silent error
       } finally {
         setLoadingQuestions(false);
       }
@@ -99,23 +108,17 @@ export default function Home() {
     if (!userData) return;
     
     try {
-      const { data } = await apiClient.get("/api/classResults");
-      
-      // Calculate user's rank
-      const userRollno = userData.rollno;
-      let rank = 0;
-      data.results.forEach((result: any, index: number) => {
-        if (result._id === userRollno) {
-          rank = index + 1;
+      const { data } = await apiClient.get("/api/classResults", {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`
         }
       });
       
       setClassStats({ 
-        classAverageResult: data.classAverageResult, 
-        rank 
+        classAverageResult: data.classAverageResult || 0
       });
     } catch (err) {
-      console.error("Error fetching class results:", err);
+      // Silent error handling
     }
   }, [userData]);
 
@@ -125,12 +128,13 @@ export default function Home() {
     if (userData) {
       fetchSubjectMarks();
       fetchClassResults();
+      fetchUserRankings();
     }
     
     // These can be fetched regardless of user login
     fetchTopSages();
     fetchQuestions();
-  }, [userData, fetchTopSages, fetchSubjectMarks, fetchQuestions, fetchClassResults, location.key]);
+  }, [userData, fetchTopSages, fetchSubjectMarks, fetchQuestions, fetchClassResults, fetchUserRankings, location.key]);
 
   // Filter questions based on search query - memoize to avoid recalculation
   const filteredQuestions = useMemo(() => 
@@ -170,8 +174,8 @@ export default function Home() {
     questionsAnswered: userData?.questionsAnswered || 0,
     myResult: overallResult,
     classAverageResult: classStats.classAverageResult,
-    rank: classStats.rank,
-  }), [userData, overallResult, classStats]);
+    rank: userRankData.rank
+  }), [userData, overallResult, classStats, userRankData]);
 
   // Notification polling: Optimize event checking with reduced frequency
   useEffect(() => {
@@ -213,7 +217,7 @@ export default function Home() {
           });
         }
       } catch (err) {
-        console.error("Error checking notifications:", err);
+        // Silent error
       }
     };
 
@@ -245,7 +249,7 @@ export default function Home() {
       await apiClient.delete(`/api/user/stats/subject/${id}`);
       setSubjectMarks(prev => prev.filter(mark => mark._id !== id));
     } catch (error) {
-      console.error("Error deleting subject mark!", error);
+      // Silent error
     }
   };
 
@@ -510,22 +514,22 @@ export default function Home() {
                   <p className="text-sm text-gray-500">Questions Answered</p>
                 </div>
                 <div>
-                  <p className="font-semibold">{userProfile.rank}</p>
-                  <p className="text-sm text-gray-500">My Rank</p>
+                  <p className="font-semibold">{userProfile.rank > 0 ? `#${userProfile.rank}` : "Not Ranked"}</p>
+                  <p className="text-sm text-gray-500">Rank</p>
                 </div>
               </div>
               <div className="bg-purple-100 rounded-lg p-4">
-                <h3 className="font-semibold mb-4 text-center">Performance</h3>
+                <h3 className="font-semibold mb-4 text-center">Academic Performance</h3>
                 <div className="flex justify-between items-center">
                   <div className="text-center">
                     <p className="text-3xl font-bold text-purple-800">
-                      {userProfile.myResult.toFixed(1)}%
+                      {isNaN(userProfile.myResult) ? "0.0%" : `${userProfile.myResult.toFixed(1)}%`}
                     </p>
                     <p className="text-sm text-purple-600 mt-1">My Result</p>
                   </div>
                   <div className="text-center">
                     <p className="text-3xl font-bold text-purple-800">
-                      {userProfile.classAverageResult.toFixed(1)}%
+                      {isNaN(userProfile.classAverageResult) ? "0.0%" : `${userProfile.classAverageResult.toFixed(1)}%`}
                     </p>
                     <p className="text-sm text-purple-600 mt-1">Class Average Result</p>
                   </div>
@@ -564,7 +568,12 @@ export default function Home() {
       </div>
 
       {/* Stats Dialog */}
-      <Dialog open={Boolean(userData && userData.showStats)} onOpenChange={() => {}}>
+      <Dialog open={Boolean(userData && userData.showStats)} onOpenChange={() => {
+        if (userData && userData.showStats) {
+          // If the dialog is being opened, refresh the rankings
+          fetchUserRankings();
+        }
+      }}>
         <DialogContent className="sm:max-w-[90vw] md:max-w-[600px] mx-auto max-h-[80vh] overflow-auto">
           <DialogHeader>
             <DialogTitle>
@@ -591,8 +600,8 @@ export default function Home() {
             <div className="grid gap-4 py-4">
               <div className="space-y-2">
                 <h3 className="font-semibold">Overall Result</h3>
-                <Progress value={userProfile.myResult} className="w-full bg-purple-200" />
-                <p className="text-sm text-right">{userProfile.myResult.toFixed(1)}%</p>
+                <Progress value={Math.max(0, Math.min(100, userProfile.myResult))} className="w-full bg-purple-200" />
+                <p className="text-sm text-right">{isNaN(userProfile.myResult) ? "0.0%" : `${userProfile.myResult.toFixed(1)}%`}</p>
                 <Button
                   variant="ghost"
                   className="mt-2 text-purple-600"
@@ -606,10 +615,12 @@ export default function Home() {
               </div>
               <div className="space-y-2">
                 <h3 className="font-semibold">Class Average Result</h3>
-                <Progress value={userProfile.classAverageResult} className="w-full bg-purple-200" />
-                <p className="text-sm text-right">{userProfile.classAverageResult.toFixed(1)}%</p>
+                <Progress value={Math.max(0, Math.min(100, userProfile.classAverageResult))} className="w-full bg-purple-200" />
+                <p className="text-sm text-right">{isNaN(userProfile.classAverageResult) ? "0.0%" : `${userProfile.classAverageResult.toFixed(1)}%`}</p>
                 <p className="text-sm text-purple-600">
-                  You beat {userProfile.rank ? (userProfile.rank > 0 ? userProfile.rank - 1 : 0) : 0} students.
+                  {userProfile.rank > 0 
+                    ? `You are ranked #${userProfile.rank} out of ${userRankData.totalUsers} students (based on wisdom points)!`
+                    : "Add subject marks, answer questions, or take quizzes to earn wisdom points and get ranked."}
                 </p>
               </div>
             </div>

@@ -940,8 +940,32 @@ app.get("/api/top-sages", async (req, res) => {
   }
 });
 
+// User Rankings endpoint based on wisdom points
+app.get("/api/userRankings", authenticateToken, async (req, res) => {
+  try {
+    // Get all users sorted by wisdom points (highest first)
+    const users = await User.find({})
+      .select('rollno name wisdomPoints')
+      .sort({ wisdomPoints: -1 })
+      .lean();
+    
+    // Calculate average wisdom points
+    const totalUsers = users.length;
+    const totalWisdomPoints = users.reduce((acc, user) => acc + (user.wisdomPoints || 0), 0);
+    const averageWisdomPoints = totalUsers > 0 ? totalWisdomPoints / totalUsers : 0;
+    
+    res.json({ 
+      rankings: users,
+      totalUsers,
+      averageWisdomPoints
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 // Class Results endpoint
-app.get("/api/classResults", async (req, res) => {
+app.get("/api/classResults", authenticateToken, async (req, res) => {
   try {
     const results = await SubjectMark.aggregate([
       {
@@ -958,11 +982,12 @@ app.get("/api/classResults", async (req, res) => {
       },
       { $sort: { overall: -1 } },
     ]);
+    
     const totalStudents = results.length;
     const classAverageResult = results.reduce((acc, curr) => acc + curr.overall, 0) / (totalStudents || 1);
+    
     res.json({ classAverageResult, results, totalStudents });
   } catch (error) {
-    console.error("Error computing class results:", error);
     res.status(500).json({ message: "Server error" });
   }
 });

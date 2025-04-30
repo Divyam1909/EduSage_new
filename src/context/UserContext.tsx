@@ -20,6 +20,12 @@ interface UserContextType {
   toggleTestLoader: (duration?: number) => void; // Function to toggle loader for testing
   loaderEnabled: boolean; // Flag to enable/disable loader
   setLoaderEnabled: (enabled: boolean) => void; // Function to set loader state
+  userRankData: { // New properties for rank data
+    rank: number;
+    totalUsers: number;
+    averagePoints: number;
+  };
+  fetchUserRankings: () => Promise<void>; // New function to fetch user rankings
 }
 
 // Add this to window for global access
@@ -41,6 +47,17 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [error, setError] = useState<string | null>(null);
   const [loaderEnabled, setLoaderEnabled] = useState<boolean>(LOADER_ENABLED); // Use constant for initial value
   
+  // New state for user rank data
+  const [userRankData, setUserRankData] = useState<{
+    rank: number;
+    totalUsers: number;
+    averagePoints: number;
+  }>({
+    rank: 0,
+    totalUsers: 0,
+    averagePoints: 0
+  });
+  
   // Refs to manage loader timing
   const loaderStartTimeRef = useRef<number | null>(null);
   const hideLoaderTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -55,7 +72,6 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         clearTimeout(hideLoaderTimeoutRef.current);
         hideLoaderTimeoutRef.current = null;
       }
-      console.log('Loader disabled - hiding any visible loaders');
     }
   }, [loaderEnabled, isAppLoading]);
 
@@ -63,7 +79,6 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const showAppLoader = useCallback(() => {
     // Only show loader if enabled
     if (!loaderEnabled) {
-      console.log('Loader is disabled - not showing');
       return;
     }
     
@@ -106,10 +121,8 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const toggleTestLoader = useCallback((duration = 3000) => {
     if (isAppLoading) {
       hideAppLoader();
-      console.log('Loader hidden (test mode)');
     } else {
       showAppLoader();
-      console.log(`Loader shown for ${duration}ms (test mode)`);
       
       // Auto-hide after duration
       setTimeout(() => {
@@ -124,12 +137,6 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     window.enableLoader = () => setLoaderEnabled(true);
     window.disableLoader = () => setLoaderEnabled(false);
     window.isLoaderEnabled = () => loaderEnabled;
-    
-    console.log('Loader controls available:');
-    console.log('- window.enableLoader() - Enable loader');
-    console.log('- window.disableLoader() - Disable loader');
-    console.log('- window.isLoaderEnabled() - Check if loader is enabled');
-    console.log('- window.toggleLoader(duration) - Test loader');
     
     return () => {
       window.toggleLoader = undefined;
@@ -221,7 +228,6 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setUserData(data);
       setError(null);
     } catch (err) {
-      console.error("Error fetching user data:", err);
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       // Hide loader after fetching completes (will respect minimum display time)
@@ -232,10 +238,61 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [hideAppLoader, showAppLoader, loaderEnabled]);
 
+  // New function to fetch user rankings
+  const fetchUserRankings = useCallback(async () => {
+    const token = localStorage.getItem("token");
+    if (!token || !userData) return;
+    
+    try {
+      const response = await apiFetch("api/userRankings", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      
+      if (response.ok) {
+        const rankingsData = await response.json();
+        
+        // Find current user's rank
+        const userRollno = userData.rollno;
+        let rank = 0;
+        let totalUsers = rankingsData.totalUsers || 0;
+        let averagePoints = rankingsData.averageWisdomPoints || 0;
+        
+        if (rankingsData.rankings && rankingsData.rankings.length > 0) {
+          // Find the user's position in rankings
+          const userIndex = rankingsData.rankings.findIndex(
+            user => String(user.rollno) === String(userRollno)
+          );
+          
+          if (userIndex !== -1) {
+            rank = userIndex + 1;
+          }
+        }
+        
+        // Update the rank data
+        setUserRankData({
+          rank,
+          totalUsers,
+          averagePoints
+        });
+      }
+    } catch (err) {
+      // Silent error handling
+    }
+  }, [userData]);
+
   // Fetch user data on initial load
   useEffect(() => {
     fetchUserData();
   }, [fetchUserData]);
+  
+  // Fetch user rankings when user data changes
+  useEffect(() => {
+    if (userData) {
+      fetchUserRankings();
+    }
+  }, [userData, fetchUserRankings]);
 
   // Provide function to manually refresh user data
   const refreshUserData = useCallback(async () => {
@@ -246,8 +303,9 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     try {
       await fetchUserData();
+      // User data will have changed, which will trigger fetchUserRankings
     } catch (error) {
-      console.error("Error refreshing user data:", error);
+      // Silent error
       // Make sure to hide loader even on error (if it was shown)
       if (loaderEnabled) {
         hideAppLoader();
@@ -262,13 +320,16 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     isLoading,
     error,
     refreshUserData,
-    isAppLoading, // Add global state
-    showAppLoader, // Add show function
-    hideAppLoader, // Add hide function
-    toggleTestLoader, // Add test function
-    loaderEnabled, // Add flag
-    setLoaderEnabled // Add toggle function
-  }), [userData, isLoading, error, refreshUserData, isAppLoading, showAppLoader, hideAppLoader, toggleTestLoader, loaderEnabled]);
+    isAppLoading, 
+    showAppLoader,
+    hideAppLoader,
+    toggleTestLoader,
+    loaderEnabled,
+    setLoaderEnabled,
+    userRankData, // Add user rank data
+    fetchUserRankings // Add function to fetch user rankings
+  }), [userData, isLoading, error, refreshUserData, isAppLoading, showAppLoader, 
+      hideAppLoader, toggleTestLoader, loaderEnabled, userRankData, fetchUserRankings]);
 
   return (
     <UserContext.Provider value={contextValue}>

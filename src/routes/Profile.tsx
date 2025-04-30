@@ -48,7 +48,7 @@ interface ClassResults {
 }
 
 export default function ProfilePage() {
-  const { userData, refreshUserData } = useUser();
+  const { userData, refreshUserData, userRankData, fetchUserRankings } = useUser();
   const navigate = useNavigate();
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [showDetailedAnalysis, setShowDetailedAnalysis] = useState(false);
@@ -78,10 +78,6 @@ export default function ProfilePage() {
   const [editingSubject, setEditingSubject] = useState<SubjectMarks | null>(null);
   const [editingMarkType, setEditingMarkType] = useState("");
   const [editingMarkValue, setEditingMarkValue] = useState("");
-  const [rankData, setRankData] = useState({ rank: 0, average: 0 });
-  
-  // New state for profile editing
-  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [profileFormData, setProfileFormData] = useState({
     name: "",
     branch: "",
@@ -93,6 +89,7 @@ export default function ProfilePage() {
   const [profileUpdateError, setProfileUpdateError] = useState("");
   const [profileUpdateSuccess, setProfileUpdateSuccess] = useState("");
   const [updatingProfile, setUpdatingProfile] = useState(false);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
 
   // Calculate total marks for each subject
   const calculateTotalMarks = (mark: SubjectMarks) => {
@@ -101,6 +98,7 @@ export default function ProfilePage() {
 
   // Format percentage to 1 decimal place
   const formatPercentage = (value: number) => {
+    if (isNaN(value) || value === undefined) return "0.0%";
     return (value).toFixed(1) + "%";
   };
 
@@ -109,14 +107,9 @@ export default function ProfilePage() {
     ? (subjectMarks.reduce((acc, mark) => acc + calculateTotalMarks(mark), 0) / (subjectMarks.length * 120)) * 100
     : 0;
 
-  // Find user's rank in class results
-  const currentUserRank = userData && classResults?.results
-    ? classResults.results.findIndex(result => result._id === userData.rollno) + 1
-    : 0;
-
-  // Calculate students beat count
-  const studentsBeat = (classResults?.totalStudents && currentUserRank)
-    ? classResults.totalStudents - currentUserRank
+  // Calculate students beat count based on userRankData from context
+  const studentsBeat = userRankData.rank > 0 && userData 
+    ? userRankData.rank - 1 
     : 0;
 
   // Initialize token from localStorage
@@ -133,41 +126,50 @@ export default function ProfilePage() {
     const fetchUserData = async () => {
       setIsLoading(true);
       try {
+        // Get token
+        const tokenFromStorage = localStorage.getItem("token");
+        if (!tokenFromStorage) {
+          setIsLoading(false);
+          return;
+        }
+        
+        // Set token in state to ensure it's available for other functions
+        setToken(tokenFromStorage);
+        
         // Fetch academic marks data
         const subjectMarksResponse = await apiFetch("api/user/stats/subject", {
           headers: {
-            Authorization: `Bearer ${token}`,
+            Authorization: `Bearer ${tokenFromStorage}`,
           },
         });
 
         if (subjectMarksResponse.ok) {
           const marksData = await subjectMarksResponse.json();
-          setSubjectMarks(marksData);
+          setSubjectMarks(marksData || []);
+        } else {
+          setSubjectMarks([]);
         }
 
         // Fetch class results
         const classResultsResponse = await apiFetch("api/classResults", {
           headers: {
-            Authorization: `Bearer ${token}`,
+            Authorization: `Bearer ${tokenFromStorage}`,
           },
         });
 
         if (classResultsResponse.ok) {
           const classData = await classResultsResponse.json();
-          // Calculate user's rank if available
-          if (userData && classData && classData.results) {
-            const userRollno = userData.rollno;
-            let rank = 0;
-            classData.results.forEach((result: any, index: number) => {
-              if (result._id === userRollno) {
-                rank = index + 1;
-              }
-            });
-            setRankData({ rank, average: classData.classAverageResult });
-          }
+          setClassResults(classData || { classAverageResult: 0, results: [], totalStudents: 0 });
+        } else {
+          setClassResults(null);
         }
+        
+        // Fetch user rankings with context function to ensure consistency
+        fetchUserRankings();
+        
       } catch (error) {
-        console.error("Error fetching user data:", error);
+        setSubjectMarks([]);
+        setClassResults(null);
       } finally {
         setIsLoading(false);
       }
@@ -176,7 +178,7 @@ export default function ProfilePage() {
     if (userData) {
       fetchUserData();
     }
-  }, [userData, token]);
+  }, [userData, fetchUserRankings]);
 
   // Update profile photo when userData changes
   useEffect(() => {
@@ -220,12 +222,10 @@ export default function ProfilePage() {
         setPhotoMessage("Photo updated successfully");
       } else {
         const errorData = await response.text();
-        console.error("Photo upload error:", errorData);
         setPhotoMessage(errorData || "Failed to update photo");
       }
     } catch (error) {
-      console.error("Error uploading photo:", error);
-      setPhotoMessage(error instanceof Error ? error.message : "Error uploading photo");
+      setPhotoMessage("Error uploading photo");
     } finally {
       setUploading(false);
     }
@@ -262,11 +262,14 @@ export default function ProfilePage() {
         setSubjectMarks([...subjectMarks, await response.json()]);
         setSelectedSubject(null);
         setFormData({ subject: "", cia1: 0, cia2: 0, midSem: 0, endSem: 0 });
+        
+        // Refresh user data and rankings
+        refreshUserData();
+        fetchUserRankings();
       } else {
         setMarkError("Failed to add mark");
       }
     } catch (error) {
-      console.error("Error adding mark:", error);
       setMarkError("Error adding mark");
     } finally {
       setSubmittingMark(false);
@@ -306,15 +309,17 @@ export default function ProfilePage() {
           )
         );
         setEditMarkMessage("Mark updated successfully");
-        setIsEditModalOpen(false);
         setEditingSubject(null);
         setEditingMarkType("");
         setEditingMarkValue("");
+        
+        // Refresh user data and rankings
+        refreshUserData();
+        fetchUserRankings();
       } else {
         setEditMarkError("Failed to update mark");
       }
     } catch (error) {
-      console.error("Error updating mark:", error);
       setEditMarkError("Error updating mark");
     }
   };
@@ -332,11 +337,14 @@ export default function ProfilePage() {
       if (response.ok) {
         setSubjectMarks(subjectMarks.filter((mark) => mark._id !== id));
         setMarkMessage("Mark deleted successfully");
+        
+        // Refresh user data and rankings
+        refreshUserData();
+        fetchUserRankings();
       } else {
         setMarkError("Failed to delete mark");
       }
     } catch (error) {
-      console.error("Error deleting mark:", error);
       setMarkError("Error deleting mark");
     }
   };
@@ -555,7 +563,6 @@ export default function ProfilePage() {
                   const target = e.target as HTMLImageElement;
                   target.onerror = null; // Prevent infinite error loops
                   target.src = "/placeholder-user.jpg";
-                  console.log("Error loading profile image, using placeholder");
                 }}
               />
               <button
@@ -706,11 +713,20 @@ export default function ProfilePage() {
                 <div className="space-y-2">
                   <h3 className="font-semibold">Class Average Result</h3>
                   <ResponsiveContainer width="100%" height={200}>
-                    <LineChart data={[{ name: "Average", value: classResults?.classAverageResult || 0 }]}>
+                    <LineChart data={[
+                      { 
+                        name: "Class Average", 
+                        value: classResults?.classAverageResult || 0 
+                      },
+                      { 
+                        name: "My Result", 
+                        value: overallPercentage || 0 
+                      }
+                    ]}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" />
                       <YAxis domain={[0, 100]} />
-                      <Tooltip formatter={(value) => `${value}%`} />
+                      <Tooltip formatter={(value) => isNaN(Number(value)) ? "0%" : `${Number(value).toFixed(1)}%`} />
                       <Line type="monotone" dataKey="value" stroke="#8884d8" />
                     </LineChart>
                   </ResponsiveContainer>
@@ -718,7 +734,9 @@ export default function ProfilePage() {
                     {formatPercentage(classResults?.classAverageResult || 0)}
                   </p>
                   <p className="text-sm text-purple-600 font-semibold">
-                    You beat {studentsBeat} out of {classResults?.totalStudents || 0} students.
+                    {userRankData.rank > 0 
+                      ? `You are ranked #${userRankData.rank} out of ${userRankData.totalUsers} students (based on wisdom points).`
+                      : "Add subject marks, answer questions, or take quizzes to earn wisdom points and get ranked."}
                   </p>
                 </div>
               </div>
