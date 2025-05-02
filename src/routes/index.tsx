@@ -16,6 +16,7 @@ import TeacherLogin from "./TeacherLogin";
 import TeacherForgot from "./TeacherForgot";
 import Solutions from "./Solutions";
 import Register from "./Register";
+import TeacherRegister from "./TeacherRegister";
 
 // Export all route components for use in the application router
 export {
@@ -36,4 +37,5 @@ export {
   TeacherForgot,
   Solutions,
   Register,
+  TeacherRegister,
 };

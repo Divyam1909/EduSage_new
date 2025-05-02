@@ -38,6 +38,13 @@ const TeacherLogin = lazy(() => import("./routes/TeacherLogin"));
 const TeacherForgot = lazy(() => import("./routes/TeacherForgot"));
 const Solutions = lazy(() => import("./routes/Solutions"));
 const Register = lazy(() => import("./routes/Register"));
+const TeacherRegister = lazy(() => import("./routes/TeacherRegister"));
+const TeacherDashboard = lazy(() => import("./routes/TeacherDashboard"));
+const TeacherStudents = lazy(() => import("./routes/TeacherStudents"));
+const TeacherResources = lazy(() => import("./routes/TeacherResources"));
+const TeacherQuizzes = lazy(() => import("./routes/TeacherQuizzes"));
+const TeacherProfile = lazy(() => import("./routes/TeacherProfile"));
+const TeacherCalendar = lazy(() => import("./routes/TeacherCalendar"));
 
 // Define the App component structure first
 const AppContent = () => {
@@ -156,6 +163,41 @@ const AppContent = () => {
         <Route path="/register" element={
           <Suspense fallback={null}>
             <Register/>
+          </Suspense>
+        } />
+        <Route path="/tregister" element={
+          <Suspense fallback={null}>
+            <TeacherRegister />
+          </Suspense>
+        } />
+        <Route path="/teacher/dashboard" element={
+          <Suspense fallback={null}>
+            <TeacherDashboard />
+          </Suspense>
+        } />
+        <Route path="/teacher/students" element={
+          <Suspense fallback={null}>
+            <TeacherStudents />
+          </Suspense>
+        } />
+        <Route path="/teacher/resources" element={
+          <Suspense fallback={null}>
+            <TeacherResources />
+          </Suspense>
+        } />
+        <Route path="/teacher/quizzes" element={
+          <Suspense fallback={null}>
+            <TeacherQuizzes />
+          </Suspense>
+        } />
+        <Route path="/teacher/profile" element={
+          <Suspense fallback={null}>
+            <TeacherProfile />
+          </Suspense>
+        } />
+        <Route path="/teacher/calendar" element={
+          <Suspense fallback={null}>
+            <TeacherCalendar />
           </Suspense>
         } />
       </Routes>

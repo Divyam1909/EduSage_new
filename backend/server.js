@@ -17,10 +17,12 @@ const Answer = require('./models/Answer');
 const SubjectMark = require('./models/SubjectMark');
 const Quiz = require("./models/Quiz.js");
 const QuizAttempt = require("./models/QuizAttempt.js");
+const { authenticateToken } = require('./middleware/auth');
 
 // Import routes
 const calendarRoutes = require('./routes/calendarRoutes');
 const eventRoutes = require('./routes/eventRoutes');
+const teacherAuthRoutes = require('./routes/teacherAuth');
 
 const app = express();
 
@@ -732,25 +734,6 @@ app.delete("/api/answers/:id", authenticateToken, async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-
-// Middleware to authenticate JWT token
-function authenticateToken(req, res, next) {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1];
-  if (!token) {
-    return res.status(401).json({ message: "Token missing" });
-  }
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-    if (err) {
-      return res.status(403).json({ message: "Invalid token" });
-    }
-    req.user = decoded;
-    next();
-  });
-}
-
-// Export the authenticateToken function so it can be used in route files
-module.exports.authenticateToken = authenticateToken;
 
 // Get user profile
 app.get("/profile", authenticateToken, async (req, res) => {
@@ -1494,6 +1477,7 @@ async function updateQuestionsAskedForAllUsers() {
 
 // Add API routes
 app.use('/api/calendar', calendarRoutes);
+app.use('/api/teacher', teacherAuthRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

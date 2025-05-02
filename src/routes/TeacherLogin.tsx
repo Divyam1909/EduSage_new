@@ -13,25 +13,45 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BookOpen, KeyRound } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import { apiFetch } from "../utils/api";
 // import Custombutton from "@/components/custombutton";
 
-export default function Login() {
+export default function TeacherLogin() {
   const navigate = useNavigate();
-  const [rollno, setRollno] = useState("");
+  const [teacherId, setTeacherId] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleClick = () => {
-    if (rollno === password && password !== "" && rollno !== "") {
-      navigate("/teacher");
-    } else {
-      alert("Invalid credentials");
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setError("");
+    try {
+      const response = await apiFetch("/api/teacher/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teacherId, password }),
+      });
+      const data = await response.json();
+      if (data.token) {
+        localStorage.setItem("teacherToken", data.token);
+        navigate("/teacher/dashboard");
+      } else {
+        setError(data.message || "Invalid credentials");
+      }
+    } catch (error) {
+      setError("Server error occurred. Please try again later.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  // Function to handle the Enter key press
-  const handleKeyPress = (e: { key: string; }) => {
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
-      handleClick();
+      e.preventDefault();
+      handleLogin(e as any);
     }
   };
 
@@ -52,16 +72,16 @@ export default function Login() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="rollno">Teacher ID</Label>
+              <Label htmlFor="teacherId">Teacher ID</Label>
               <Input
-                id="rollno"
-                name="rollno"
+                id="teacherId"
+                name="teacherId"
                 type="text"
                 placeholder="e.g., T12345"
                 required
-                value={rollno}
-                onChange={(e) => setRollno(e.target.value)}
-                onKeyDown={handleKeyPress} // Trigger handleClick on Enter
+                value={teacherId}
+                onChange={(e) => setTeacherId(e.target.value)}
+                onKeyDown={handleKeyPress} // Trigger handleLogin on Enter
               />
             </div>
             <div className="space-y-2">
@@ -73,7 +93,7 @@ export default function Login() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={handleKeyPress} // Trigger handleClick on Enter
+                onKeyDown={handleKeyPress} // Trigger handleLogin on Enter
               />
             </div>
             <div className="flex items-center space-x-2">
@@ -89,10 +109,11 @@ export default function Login() {
           <CardFooter className="flex flex-col space-y-4">
             <Button
               className="w-full bg-purple-600 hover:bg-purple-700 text-white"
-              onClick={handleClick}
+              onClick={handleLogin}
+              disabled={isSubmitting}
             >
               {/* <Custombutton/> */}
-              Log in
+              {isSubmitting ? "Logging in..." : "Log in"}
             </Button>
             <div className="flex items-center justify-between w-full text-sm">
               <Link
@@ -102,12 +123,7 @@ export default function Login() {
                 <KeyRound className="h-4 w-4 mr-1" />
                 Forgot password?
               </Link>
-              <Link
-                className="text-purple-600 hover:text-purple-700 hover:underline"
-                to="/signup"
-              >
-                New teacher? Sign up
-              </Link>
+              <Link to="/tregister" className="text-purple-700 hover:underline text-sm">New teacher? Sign up</Link>
             </div>
           </CardFooter>
         </Card>

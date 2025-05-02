@@ -2,33 +2,50 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
-
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { apiFetch } from "../utils/api";
 
-export default function ForgotPasswordPage() {
-  const [rollNo, setRollNo] = useState("");
-  const [isLinkSent, setIsLinkSent] = useState(false); // State to track if the reset link is sent
-  const [seconds, setSeconds] = useState(0); // State to track the countdown timer
+export default function TeacherForgotPasswordPage() {
+  const [teacherId, setTeacherId] = useState("");
+  const [email, setEmail] = useState("");
+  const [isLinkSent, setIsLinkSent] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  const handleSubmit = (event: { preventDefault: () => void; }) => {
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setIsLinkSent(true); // Mark the link as sent
-    setSeconds(5); // Start the 30-second countdown
-    alert("Password reset link successfully sent!");
+    setError("");
+    setSuccess("");
+    try {
+      const response = await apiFetch("/api/teacher/forgot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teacherId, email }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setIsLinkSent(true);
+        setSeconds(30);
+        setSuccess(data.message || "Password reset link sent!");
+      } else {
+        setError(data.message || "Failed to send reset link");
+      }
+    } catch (err) {
+      setError("Server error. Please try again later.");
+    }
   };
 
   useEffect(() => {
-    let timer: string | number | NodeJS.Timeout | undefined;
+    let timer;
     if (isLinkSent && seconds > 0) {
-      // Set up the countdown
       timer = setInterval(() => {
         setSeconds((prevSeconds) => prevSeconds - 1);
       }, 1000);
     } else if (seconds === 0) {
-      // Stop the timer when countdown ends
       clearInterval(timer);
     }
     return () => clearInterval(timer);
@@ -40,30 +57,44 @@ export default function ForgotPasswordPage() {
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center text-purple-800">Forgot Password</CardTitle>
           <CardDescription className="text-center text-purple-600">
-            Enter your T_ID to receive a password reset link
+            Enter your Teacher ID and email to receive a password reset link
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div className="space-y-2">
-              <Label htmlFor="rollNo" className="text-purple-700">Teacher ID</Label>
+              <Label htmlFor="teacherId" className="text-purple-700">Teacher ID</Label>
               <Input
-                id="rollNo"
-                placeholder="Enter your T_ID"
+                id="teacherId"
+                placeholder="Enter your Teacher ID"
                 required
-                value={rollNo}
-                onChange={(e) => setRollNo(e.target.value)}
+                value={teacherId}
+                onChange={(e) => setTeacherId(e.target.value)}
+                className="border-purple-300 focus:border-purple-500 focus:ring-purple-500"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email" className="text-purple-700">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="Enter your email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="border-purple-300 focus:border-purple-500 focus:ring-purple-500"
               />
             </div>
             <Button
               type="submit"
               className="w-full bg-purple-600 hover:bg-purple-700 text-white"
-              disabled={isLinkSent && seconds > 0} // Disable the button during the countdown
+              disabled={isLinkSent && seconds > 0}
             >
               {isLinkSent && seconds > 0 ? `Please wait... (${seconds}s)` : isLinkSent ? "Resend Link" : "Send Reset Link"}
             </Button>
           </form>
+          {success && <p className="mt-4 text-center text-green-600">{success}</p>}
+          {error && <p className="mt-4 text-center text-red-600">{error}</p>}
           {isLinkSent && seconds > 0 && (
             <p className="mt-4 text-center text-purple-600">
               Please wait {seconds} seconds before you can resend the link.
